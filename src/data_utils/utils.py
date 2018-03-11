@@ -78,6 +78,17 @@ def parse_line(line, text_column, label_column, tweet_id_column, user_name_colum
     # truncate decimals after seconds
     line[time_column] = line[time_column].split('.', 1)[0]
 
+    # standardize time stamp: want year-month-day format,
+    # earlier ones are in month/day/year format
+    if '/' in line[time_column]:
+        [date, time] = line[time_column].split()
+        [month, day, year] = date.split('/')
+        if len(month) < 2:
+            month = '0' + month
+        if len(day) < 2:
+            day = '0' + day
+        line[time_column] = '-'.join([year, month, day]) + ' ' + time
+
     # take line (dict) as input and return text along with label if label is present
     if line[text_column] in (None, ''):
         return None, None, line[tweet_id_column], line[user_name_column], line[time_column]
