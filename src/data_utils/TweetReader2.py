@@ -124,9 +124,10 @@ class Generator:
 
 class TweetCorpus:
 
-    def __init__(self, train_file = None, val_file = None, test_file = None, unld_train_file = None, unld_val_file = None, dictionaries_file = None):
+    def __init__(self, train_file = None, val_file = None, test_file = None, unld_train_file = None, unld_val_file = None, dictionaries_file = None, users_file = None):
 
         self.W, self.token2idx, self.label2idx, self.counts, self.class_weights, self.max_len = pickle.load(open(dictionaries_file, "rb"))
+        self.W_d, self.user2idx = pickle.load(open(users_file, "rb"))
 
         self.pad_token_idx = self.token2idx['__PAD__']
         self.idx2token = {v:k for k, v in self.token2idx.iteritems()}
