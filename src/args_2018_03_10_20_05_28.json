@@ -1,0 +1,30 @@
+{
+    "unld_train_file": null, 
+    "trainable": true, 
+    "n_epochs": 50, 
+    "ntokens": 2324, 
+    "train_file": "./combined_tr_2018_03_10_19_58_39.txt", 
+    "ts": "2018_03_10_20_05_28", 
+    "max_seq_len": 53, 
+    "nclasses": 3, 
+    "model_save_dir": "./", 
+    "dictionaries_file": "./dictionaries_2018_03_10_19_58_39.p", 
+    "nfeature_maps": 200, 
+    "dropout": 0.5, 
+    "dense_hidden_dim": 256, 
+    "test_file": "./combined_test_2018_03_10_19_58_39.txt", 
+    "arch_type": "cnn", 
+    "val_file": "./combined_val_2018_03_10_19_58_39.txt", 
+    "batch_size": 256, 
+    "lstm_hidden_dim": 256, 
+    "kernel_sizes": [
+        1, 
+        2, 
+        3, 
+        4, 
+        5
+    ], 
+    "trained_model": null, 
+    "unld_val_file": null, 
+    "mode": "clf"
+}
