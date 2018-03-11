@@ -282,7 +282,7 @@ class CNNClassifier(object):
 
     def predict(self, X_test, model_path, batch_size):
         self.model.load_weights(model_path)
-        preds = self.model.predict([X_test], batch_size = batch_size, verbose = 2)
+        preds = self.model.predict(X_test, batch_size = batch_size, verbose = 2)
         return preds
 
 class AutoEncoder(object):
