@@ -33,6 +33,7 @@ class TweetPreprocessor:
         self.normalize = normalize
         self.add_ss_markers = add_ss_markers
         self.token2idx = {}
+        self.user2idx = {}
         # add start and stop markers
         if self.add_ss_markers:
             self.token2idx['<'] = 1
@@ -67,6 +68,7 @@ class TweetPreprocessor:
                     fhw2.write('\n')
                     continue
                 X_ids = self.update_token2idx(X_c)
+                user_id = self.update_user2idx(user_name)
                 # _tmp = ','.join(X_ids)
                 if y_c is not None:
                     y_id = self.update_label2idx(y_c)
@@ -77,7 +79,7 @@ class TweetPreprocessor:
                 if is_train and y_id != '':
                     self.class2count[int(y_id)] += 1
 
-                fhw1.write(datum_to_string(X_ids, y_id, tweet_id, user_name))
+                fhw1.write(datum_to_string(X_ids, y_id, tweet_id, user_id))
                 fhw1.write('\n')
 
         return indices_file
@@ -125,6 +127,11 @@ class TweetPreprocessor:
                     index += 1
 
         return idx
+
+    def update_user2idx(self, user_name):
+        if user_name not in self.user2idx:
+            self.user2idx[user_name] = len(self.user2idx) + 1
+        return str(self.user2idx[user_name])
 
     def update_label2idx(self, label):
 

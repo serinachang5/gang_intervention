@@ -51,7 +51,7 @@ def preprocess(tweet, is_word_level = False):
     tweet = re.sub('^RT', '__RT__', tweet)
     # remove words containing digits
     tweet = re.sub(r'#*\w*\d+(?:[\./:,\-]\d+)?\w*', '', tweet).strip()
-    tweet = regex_punc.sub('', tweet)
+    # tweet = regex_punc.sub('', tweet)
     # remove extra white space due to above operations
     tweet = re.sub(' +', ' ', tweet)
     return tweet
@@ -108,7 +108,7 @@ def parse_line(line, text_column, label_column, tweet_id_column, user_name_colum
 
     return X_c, y_c, line[tweet_id_column], line[user_name_column]
 
-def datum_to_string(X_ids, y_id, tweet_id, user_name):
+def datum_to_string(X_ids, y_id, tweet_id, user_id):
 
     file_str = StringIO()
     file_str.write(','.join(X_ids).strip())
@@ -117,7 +117,7 @@ def datum_to_string(X_ids, y_id, tweet_id, user_name):
     file_str.write('<:>')
     file_str.write(tweet_id)
     file_str.write('<:>')
-    file_str.write(user_name)
+    file_str.write(user_id)
     return file_str.getvalue()
 
 def delete_files(flist):
