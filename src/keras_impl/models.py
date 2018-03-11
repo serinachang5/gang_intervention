@@ -234,6 +234,8 @@ class CNNClassifier(object):
 
         sequence_input = Input(shape = (kwargs['max_seq_len'],), dtype = 'int32')
 
+        discrete_input = Input(shape = (1,), dtype = 'float32')
+
         embedded_sequences = self.embedding_layer(sequence_input)
 
         embedded_sequences = Dropout(kwargs['dropout'])(embedded_sequences)
@@ -247,11 +249,13 @@ class CNNClassifier(object):
 
         conv_op = concatenate(conv_mxp_ops, axis = 1)
 
-        dense_op = self.dense1(conv_op)
+        combined = concatenate([conv_op, discrete_input], axis = 1)
+
+        dense_op = self.dense1(combined)
 
         clf_op = self.clf_op_layer(dense_op)
 
-        self.model = Model(inputs = [sequence_input], outputs = clf_op)
+        self.model = Model(inputs = [sequence_input, discrete_input], outputs = clf_op)
 
     def fit(self, X_train, X_val, X_test, y_train, y_val, class_weights, args):
 
@@ -269,9 +273,9 @@ class CNNClassifier(object):
 
         # model_checkpoint = ModelCheckpoint(bst_model_path, save_best_only = True, save_weights_only = True)
 
-        callback = MyCallback(([X_val], y_val), bst_model_path, patience = 5, verbose = 1, save_best_only = True, save_weights_only = True)
+        callback = MyCallback((X_val, y_val), bst_model_path, patience = 5, verbose = 1, save_best_only = True, save_weights_only = True)
 
-        hist = self.model.fit([X_train], y_train, \
+        hist = self.model.fit(X_train, y_train, \
                 validation_data = None, \
                 epochs = args['n_epochs'], verbose = 2, batch_size = args['batch_size'], shuffle = True, \
                 callbacks = [callback], class_weight = class_weights)

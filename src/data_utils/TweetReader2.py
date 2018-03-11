@@ -42,14 +42,14 @@ def add_pad_token(X, pad_token_idx, max_len):
 def parse_line(line, mode):
     x_y = line.split('<:>')
     indices = [int(ch) for ch in x_y[0].split(',')]
-    X_c = indices
     if mode == 'lm':
-        y_c = None
+        y = None
     elif mode == 'clf':
-        y_c = [int(x_y[1])]
+        y = [int(x_y[1])]
     elif mode == 'seq2seq':
-        y_c = indices
-    return X_c, y_c
+        y = indices
+    user = [int(x_y[3])]
+    return indices, user, y
 
 def get_line_count(fname):
     p = subprocess.Popen(['wc', '-l', fname], stdout = subprocess.PIPE,
@@ -62,20 +62,23 @@ def get_line_count(fname):
 class Corpus:
     # in-memory data
     def __init__(self, data_file, mode):
-        self.X = []
+        self.X_c = []
+        self.X_d = []
         self.y = []
         self.read_data(data_file, mode)
-        print 'Number of lines in %s: %d' % (data_file, len(self.X))
+        print 'Number of lines in %s: %d' % (data_file, len(self.X_c))
 
     def read_data(self, data_file, mode):
 
         with open(data_file, 'r') as fh:
             for line in fh:
-                X_c, y_c = parse_line(line, mode)
-                self.X.append(X_c)
-                self.y.append(y_c)
+                indices, user, y = parse_line(line, mode)
+                self.X_c.append(indices)
+                self.X_d.append(user)
+                self.y.append(y)
 
-        self.X = np.asarray(self.X)
+        self.X_c = np.asarray(self.X_c)
+        self.X_d = np.asarray(self.X_d)
         self.y = np.asarray(self.y)
 
 class Generator:
@@ -98,7 +101,7 @@ class Generator:
             done = False
             with open(self.data_file) as fh:
                 for line in fh:
-                    X_c, y_c = parse_line(line, self.mode, self.max_len, self.nclasses, self.pad_token_idx)
+                    X_c, _, y_c = parse_line(line, self.mode, self.max_len, self.nclasses, self.pad_token_idx)
                     X.append(X_c)
                     y.append(y_c)
                     if len(X) == batch_size:
@@ -116,7 +119,7 @@ class Generator:
         while True:
             with open(self.data_file) as fh:
                 for line in fh:
-                    X_c, y_c = parse_line(line, self.mode, self.max_len, self.nclasses, self.pad_token_idx)
+                    X_c, _, y_c = parse_line(line, self.mode, self.max_len, self.nclasses, self.pad_token_idx)
                     yield (np.asarray([X_c]), np.asarray([y_c]))
 
 class TweetCorpus:
@@ -158,25 +161,31 @@ class TweetCorpus:
         X_tr = None
         y_tr = None
         if self.tr_data is not None:
-            X_tr = add_pad_token(self.tr_data.X, self.pad_token_idx, self.max_len)
+            X_tr_c = add_pad_token(self.tr_data.X_c, self.pad_token_idx, self.max_len)
+            X_tr_d = self.tr_data.X_d
+            X_tr = [X_tr_c, X_tr_d]
             y_tr = np_utils.to_categorical(self.tr_data.y, len(self.label2idx))
 
         X_val = None
         y_val = None
         if self.val_data is not None:
-            X_val = add_pad_token(self.val_data.X, self.pad_token_idx, self.max_len)
+            X_val_c = add_pad_token(self.val_data.X_c, self.pad_token_idx, self.max_len)
+            X_val_d = self.val_data.X_d
+            X_val = [X_val_c, X_val_d]
             y_val = np_utils.to_categorical(self.val_data.y, len(self.label2idx))
 
         X_te = None
         y_te = None
         if self.te_data is not None:
-            X_te = add_pad_token(self.te_data.X, self.pad_token_idx, self.max_len)
+            X_te_c = add_pad_token(self.te_data.X_c, self.pad_token_idx, self.max_len)
+            X_te_d = self.te_data.X_d
+            X_te = [X_te_c, X_te_d]
             y_te = np_utils.to_categorical(self.te_data.y, len(self.label2idx))
 
         return X_tr, X_val, X_te, y_tr, y_val, y_te
 
     def get_data_for_cross_validation(self, folds = 3):
-        X_tr, X_val, _, y_tr, y_val, _ = self.get_data_for_classification()
+        (X_tr,_), (X_val,_), _, y_tr, y_val, _ = self.get_data_for_classification()
         # combine X_train, X_val and use the combined dataset for cross validation
         X_train = np.concatenate((X_tr, X_val), axis = 0)
         y_train = np.concatenate((y_tr, y_val), axis = 0)
@@ -187,15 +196,15 @@ class TweetCorpus:
     def get_data_for_lm(self, truncate = False, context_size = 10):
         if truncate:
             # After truncation, X will have shape [-1, context_size] and y will have shape [-1,1]
-            X_tr, y_tr = flatten(self.unld_tr_data.X, context_size)
-            X_val, y_val = flatten(self.unld_val_data.X, context_size)
+            X_tr, y_tr = flatten(self.unld_tr_data.X_c, context_size)
+            X_val, y_val = flatten(self.unld_val_data.X_c, context_size)
             return X_tr, X_val, y_tr, y_val
         else:
-            _X = add_pad_token(self.unld_tr_data.X, self.pad_token_idx, self.max_len)
+            _X = add_pad_token(self.unld_tr_data.X_c, self.pad_token_idx, self.max_len)
             X_tr = _X[:, :-1]
             y_tr = _X[:, 1:]
             y_tr = np.expand_dims(y_tr, 2)
-            _X = add_pad_token(self.unld_val_data.X, self.pad_token_idx, self.max_len)
+            _X = add_pad_token(self.unld_val_data.X_c, self.pad_token_idx, self.max_len)
             X_val = _X[:, :-1]
             y_val = _X[:, 1:]
             y_val = np.expand_dims(y_val, 2)
