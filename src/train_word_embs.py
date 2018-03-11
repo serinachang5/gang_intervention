@@ -33,7 +33,7 @@ def main(args):
 
     save_file = args['save_file'] + ".h5"
     w2v = train_w2v(tweets)
-    w2v.save_word2vec_format(save_file)
+    w2v.save_word2vec_format(save_file, binary=True)
     print "Saved w2v keyed vectors at", save_file
 
 if __name__ == '__main__':
