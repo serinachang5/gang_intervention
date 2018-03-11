@@ -42,7 +42,7 @@ class TweetPreprocessor:
         self.len_dict = defaultdict(int)
         self.class2count = defaultdict(int)
 
-    def read_data(self, output_files_dir, data_file, parser, text_column, label_column, tweet_id_column, encoding, is_train = False):
+    def read_data(self, output_files_dir, data_file, parser, text_column, label_column, tweet_id_column, user_name_column, encoding, is_train = False):
 
         if data_file is None:
             return
@@ -60,7 +60,7 @@ class TweetPreprocessor:
         with open(data_file, 'r') as fhr, open(indices_file, 'w') as fhw1, codecs.open(dropped_tweets_file, 'w', encoding = encoding) as fhw2:
             reader = unicode_csv_reader2(fhr, encoding, delimiter = delimiter)
             for row in reader:
-                X_c, y_c, tweet_id = parser(row, text_column, label_column, tweet_id_column, self.max_len, stop_chars = self.stop_chars, normalize = self.normalize, word_level = self.word_level, add_ss_markers = self.add_ss_markers)
+                X_c, y_c, tweet_id, user_name = parser(row, text_column, label_column, tweet_id_column, user_name_column, self.max_len, stop_chars = self.stop_chars, normalize = self.normalize, word_level = self.word_level, add_ss_markers = self.add_ss_markers)
                 if X_c is None:
                     # print tweet_id
                     fhw2.write(tweet_id)
@@ -77,7 +77,7 @@ class TweetPreprocessor:
                 if is_train and y_id != '':
                     self.class2count[int(y_id)] += 1
 
-                fhw1.write(datum_to_string(X_ids, y_id, tweet_id))
+                fhw1.write(datum_to_string(X_ids, y_id, tweet_id, user_name))
                 fhw1.write('\n')
 
         return indices_file
@@ -291,7 +291,7 @@ class TweetPreprocessor:
                     else:
                         fhw2.write(','.join([x_y_tid[2], self.wsp.join([_idx2token[int(idx)].encode('utf8') for idx in new_idx_lst])]))
                         fhw2.write('\n')
-                        fhw1.write(datum_to_string(new_idx_lst, x_y_tid[1], x_y_tid[2]))
+                        fhw1.write(datum_to_string(new_idx_lst, x_y_tid[1], x_y_tid[2], x_y_tid[3]))
                         fhw1.write('\n')
 
         # delete old files
@@ -320,19 +320,19 @@ def main(args):
     tweet_preprocessor = TweetPreprocessor(stop_chars, time_stamp, max_len = max_len, word_level = args['word_level'], normalize = args['normalize'], add_ss_markers = args['add_ss_markers'])
     if args['train_file'] is not None:
         print 'Processing training set . . .'
-        labeled_files.append(tweet_preprocessor.read_data(args['output_file_dir'], args['train_file'], parse_line, 'text', 'label', 'tweet_id', 'utf8', is_train = True))
+        labeled_files.append(tweet_preprocessor.read_data(args['output_file_dir'], args['train_file'], parse_line, 'text', 'label', 'tweet_id', 'user_name', 'utf8', is_train = True))
     if args['val_file'] is not None:
         print 'Processing validation set . . .'
-        labeled_files.append(tweet_preprocessor.read_data(args['output_file_dir'], args['val_file'], parse_line, 'text', 'label', 'tweet_id', 'utf8'))
+        labeled_files.append(tweet_preprocessor.read_data(args['output_file_dir'], args['val_file'], parse_line, 'text', 'label', 'tweet_id', 'user_name', 'utf8'))
     if args['test_file'] is not None:
         print 'Processing test set . . .'
-        labeled_files.append(tweet_preprocessor.read_data(args['output_file_dir'], args['test_file'], parse_line, 'text', 'label', 'tweet_id', 'utf8'))
+        labeled_files.append(tweet_preprocessor.read_data(args['output_file_dir'], args['test_file'], parse_line, 'text', 'label', 'tweet_id', 'user_name', 'utf8'))
     if args['tweets_file_tr'] is not None:
         print 'Processing unlabeled train set . . .'
-        unlabeled_files.append(tweet_preprocessor.read_data(args['output_file_dir'], args['tweets_file_tr'], parse_line, 'text', 'label', 'tweet_id', 'utf8'))
+        unlabeled_files.append(tweet_preprocessor.read_data(args['output_file_dir'], args['tweets_file_tr'], parse_line, 'text', 'label', 'tweet_id', 'user_name', 'utf8'))
     if args['tweets_file_val'] is not None:
         print 'Processing unlabeled validation set . . .'
-        unlabeled_files.append(tweet_preprocessor.read_data(args['output_file_dir'], args['tweets_file_val'], parse_line, 'text', 'label', 'tweet_id', 'utf8'))
+        unlabeled_files.append(tweet_preprocessor.read_data(args['output_file_dir'], args['tweets_file_val'], parse_line, 'text', 'label', 'tweet_id', 'user_name', 'utf8'))
 
     # print 'Re-mapping token2idx . . .'
     tweet_preprocessor.remap(labeled_files, unlabeled_files)

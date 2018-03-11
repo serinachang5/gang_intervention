@@ -65,7 +65,7 @@ def get_delimiter(data_file):
         delimiter = ' '
     return delimiter
 
-def parse_line(line, text_column, label_column, tweet_id_column, max_len, stop_chars = None, normalize = False, add_ss_markers = False, word_level = False):
+def parse_line(line, text_column, label_column, tweet_id_column, user_name_column, max_len, stop_chars = None, normalize = False, add_ss_markers = False, word_level = False):
 
     if add_ss_markers:
         # -4 to account for start and stop markers and spaces
@@ -73,9 +73,11 @@ def parse_line(line, text_column, label_column, tweet_id_column, max_len, stop_c
     else:
         _max_len = max_len
 
+    line[user_name_column] = line[user_name_column].lower()
+
     # take line (dict) as input and return text along with label if label is present
     if line[text_column] in (None, ''):
-        return None, None, line[tweet_id_column]
+        return None, None, line[tweet_id_column], line[user_name_column]
 
     if stop_chars is not None:
         line[text_column] = [ch for ch in line[text_column] if ch not in stop_chars]
@@ -87,7 +89,7 @@ def parse_line(line, text_column, label_column, tweet_id_column, max_len, stop_c
     # print line[text_column]
 
     if line[text_column] in (None, ''):
-        return None, None, line[tweet_id_column]
+        return None, None, line[tweet_id_column], line[user_name_column]
 
     if word_level:
         line[text_column] = line[text_column].split(' ')
@@ -104,9 +106,9 @@ def parse_line(line, text_column, label_column, tweet_id_column, max_len, stop_c
     else:
         y_c = None
 
-    return X_c, y_c, line[tweet_id_column]
+    return X_c, y_c, line[tweet_id_column], line[user_name_column]
 
-def datum_to_string(X_ids, y_id, tweet_id):
+def datum_to_string(X_ids, y_id, tweet_id, user_name):
 
     file_str = StringIO()
     file_str.write(','.join(X_ids).strip())
@@ -114,6 +116,8 @@ def datum_to_string(X_ids, y_id, tweet_id):
     file_str.write(y_id)
     file_str.write('<:>')
     file_str.write(tweet_id)
+    file_str.write('<:>')
+    file_str.write(user_name)
     return file_str.getvalue()
 
 def delete_files(flist):
