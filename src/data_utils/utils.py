@@ -65,7 +65,7 @@ def get_delimiter(data_file):
         delimiter = ' '
     return delimiter
 
-def parse_line(line, text_column, label_column, tweet_id_column, user_name_column, max_len, stop_chars = None, normalize = False, add_ss_markers = False, word_level = False):
+def parse_line(line, text_column, label_column, tweet_id_column, user_name_column, time_column, max_len, stop_chars = None, normalize = False, add_ss_markers = False, word_level = False):
 
     if add_ss_markers:
         # -4 to account for start and stop markers and spaces
@@ -75,9 +75,12 @@ def parse_line(line, text_column, label_column, tweet_id_column, user_name_colum
 
     line[user_name_column] = line[user_name_column].lower()
 
+    # truncate decimals after seconds
+    line[time_column] = line[time_column].split('.', 1)[0]
+
     # take line (dict) as input and return text along with label if label is present
     if line[text_column] in (None, ''):
-        return None, None, line[tweet_id_column], line[user_name_column]
+        return None, None, line[tweet_id_column], line[user_name_column], line[time_column]
 
     if stop_chars is not None:
         line[text_column] = [ch for ch in line[text_column] if ch not in stop_chars]
@@ -89,7 +92,7 @@ def parse_line(line, text_column, label_column, tweet_id_column, user_name_colum
     # print line[text_column]
 
     if line[text_column] in (None, ''):
-        return None, None, line[tweet_id_column], line[user_name_column]
+        return None, None, line[tweet_id_column], line[user_name_column], line[time_column]
 
     if word_level:
         line[text_column] = line[text_column].split(' ')
@@ -106,9 +109,9 @@ def parse_line(line, text_column, label_column, tweet_id_column, user_name_colum
     else:
         y_c = None
 
-    return X_c, y_c, line[tweet_id_column], line[user_name_column]
+    return X_c, y_c, line[tweet_id_column], line[user_name_column], line[time_column]
 
-def datum_to_string(X_ids, y_id, tweet_id, user_id):
+def datum_to_string(X_ids, y_id, tweet_id, user_id, time_created):
 
     file_str = StringIO()
     file_str.write(','.join(X_ids).strip())
@@ -118,6 +121,8 @@ def datum_to_string(X_ids, y_id, tweet_id, user_id):
     file_str.write(tweet_id)
     file_str.write('<:>')
     file_str.write(user_id)
+    file_str.write('<:>')
+    file_str.write(time_created)
     return file_str.getvalue()
 
 def delete_files(flist):
