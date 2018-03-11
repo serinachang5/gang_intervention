@@ -1,4 +1,4 @@
-Extended version of @siddharthvaria's GI-DL repo that includes user embeddings.
+Extended version of @siddharthvaria's GI-DL repo. Adds user embeddings for CNN classifier.
 
 =========================================
 # GI-DL
