@@ -207,13 +207,10 @@ class TweetPreprocessor:
         print 'Number of emoji embeddings found:', (w2v_miss_count - emoji_miss_count)
         return W
 
-    def get_emo_embeddings(self, lfile = None, emb_dim = 3):
+    def get_emo_embeddings(self, lfile = None, emb_dim = 2):
+        w2e = None
         if lfile is not None:
             w2e = pickle.load(open(lfile, 'rb'))
-            avg = np.mean(w2e.values(), axis=0)
-        else:
-            w2e = {}
-            avg = np.zeros(3)
 
         W = np.zeros((len(self.token2idx), emb_dim))
 
@@ -221,13 +218,15 @@ class TweetPreprocessor:
         for token in self.token2idx:
             tok_low = token.lower()
             if tok_low in w2e:
-                W[self.token2idx[token]] = w2e[tok_low]
+                scores = w2e[tok_low]
+                loss = scores[0] / sum(scores)
+                agg = scores[1] / sum(scores)
+                W[self.token2idx[token]] = [loss, agg]
             else:
                 w2e_miss_count += 1
-                W[self.token2idx[token]] = avg
 
         # just make sure the embedding corresponding to padding token is neutral
-        W[self.token2idx['__PAD__']] = avg
+        W[self.token2idx['__PAD__']] = np.zeros(emb_dim, dtype = 'float32')
 
         print 'Number of emo embeddings found:', (len(self.token2idx.keys()) - w2e_miss_count)
         return W

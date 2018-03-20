@@ -51,7 +51,7 @@ def preprocess(tweet, is_word_level = False):
     tweet = re.sub('^RT', '__RT__', tweet)
     # remove words containing digits
     tweet = re.sub(r'#*\w*\d+(?:[\./:,\-]\d+)?\w*', '', tweet).strip()
-    # tweet = regex_punc.sub('', tweet)
+    tweet = regex_punc.sub('', tweet)
     # remove extra white space due to above operations
     tweet = re.sub(' +', ' ', tweet)
     return tweet

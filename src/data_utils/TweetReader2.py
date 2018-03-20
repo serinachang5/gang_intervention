@@ -62,23 +62,23 @@ def get_line_count(fname):
 class Corpus:
     # in-memory data
     def __init__(self, data_file, mode):
-        self.X_c = []
-        self.X_d = []
+        self.X_seq = []
+        self.X_user = []
         self.y = []
         self.read_data(data_file, mode)
-        print 'Number of lines in %s: %d' % (data_file, len(self.X_c))
+        print 'Number of lines in %s: %d' % (data_file, len(self.X_seq))
 
     def read_data(self, data_file, mode):
 
         with open(data_file, 'r') as fh:
             for line in fh:
                 indices, user, y = parse_line(line, mode)
-                self.X_c.append(indices)
-                self.X_d.append(user)
+                self.X_seq.append(indices)
+                self.X_user.append(user)
                 self.y.append(y)
 
-        self.X_c = np.asarray(self.X_c)
-        self.X_d = np.asarray(self.X_d)
+        self.X_seq = np.asarray(self.X_seq)
+        self.X_user = np.asarray(self.X_user)
         self.y = np.asarray(self.y)
 
 class Generator:
@@ -124,10 +124,11 @@ class Generator:
 
 class TweetCorpus:
 
-    def __init__(self, train_file = None, val_file = None, test_file = None, unld_train_file = None, unld_val_file = None, dictionaries_file = None, users_file = None):
+    def __init__(self, train_file = None, val_file = None, test_file = None, unld_train_file = None, unld_val_file = None, dictionaries_file = None, emo_lex_file = None, users_file = None):
 
         self.W, self.token2idx, self.label2idx, self.counts, self.class_weights, self.max_len = pickle.load(open(dictionaries_file, "rb"))
-        self.W_d, self.user2idx = pickle.load(open(users_file, "rb"))
+        self.W_e, _ = pickle.load(open(emo_lex_file, "rb"))
+        self.W_u, self.user2idx = pickle.load(open(users_file, "rb"))
 
         self.pad_token_idx = self.token2idx['__PAD__']
         self.idx2token = {v:k for k, v in self.token2idx.iteritems()}
@@ -162,25 +163,25 @@ class TweetCorpus:
         X_tr = None
         y_tr = None
         if self.tr_data is not None:
-            X_tr_c = add_pad_token(self.tr_data.X_c, self.pad_token_idx, self.max_len)
-            X_tr_d = self.tr_data.X_d
-            X_tr = [X_tr_c, X_tr_d]
+            X_tr_seq = add_pad_token(self.tr_data.X_seq, self.pad_token_idx, self.max_len)
+            X_tr_user = self.tr_data.X_user
+            X_tr = [X_tr_seq, X_tr_user]
             y_tr = np_utils.to_categorical(self.tr_data.y, len(self.label2idx))
 
         X_val = None
         y_val = None
         if self.val_data is not None:
-            X_val_c = add_pad_token(self.val_data.X_c, self.pad_token_idx, self.max_len)
-            X_val_d = self.val_data.X_d
-            X_val = [X_val_c, X_val_d]
+            X_val_seq = add_pad_token(self.val_data.X_seq, self.pad_token_idx, self.max_len)
+            X_val_user = self.val_data.X_user
+            X_val = [X_val_seq, X_val_user]
             y_val = np_utils.to_categorical(self.val_data.y, len(self.label2idx))
 
         X_te = None
         y_te = None
         if self.te_data is not None:
-            X_te_c = add_pad_token(self.te_data.X_c, self.pad_token_idx, self.max_len)
-            X_te_d = self.te_data.X_d
-            X_te = [X_te_c, X_te_d]
+            X_te_seq = add_pad_token(self.te_data.X_seq, self.pad_token_idx, self.max_len)
+            X_te_user = self.te_data.X_user
+            X_te = [X_te_seq, X_te_user]
             y_te = np_utils.to_categorical(self.te_data.y, len(self.label2idx))
 
         return X_tr, X_val, X_te, y_tr, y_val, y_te
@@ -197,15 +198,15 @@ class TweetCorpus:
     def get_data_for_lm(self, truncate = False, context_size = 10):
         if truncate:
             # After truncation, X will have shape [-1, context_size] and y will have shape [-1,1]
-            X_tr, y_tr = flatten(self.unld_tr_data.X_c, context_size)
-            X_val, y_val = flatten(self.unld_val_data.X_c, context_size)
+            X_tr, y_tr = flatten(self.unld_tr_data.X_seq, context_size)
+            X_val, y_val = flatten(self.unld_val_data.X_seq, context_size)
             return X_tr, X_val, y_tr, y_val
         else:
-            _X = add_pad_token(self.unld_tr_data.X_c, self.pad_token_idx, self.max_len)
+            _X = add_pad_token(self.unld_tr_data.X_seq, self.pad_token_idx, self.max_len)
             X_tr = _X[:, :-1]
             y_tr = _X[:, 1:]
             y_tr = np.expand_dims(y_tr, 2)
-            _X = add_pad_token(self.unld_val_data.X_c, self.pad_token_idx, self.max_len)
+            _X = add_pad_token(self.unld_val_data.X_seq, self.pad_token_idx, self.max_len)
             X_val = _X[:, :-1]
             y_val = _X[:, 1:]
             y_val = np.expand_dims(y_val, 2)
