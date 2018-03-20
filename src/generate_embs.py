@@ -4,7 +4,7 @@ from gensim.models import Word2Vec
 import numpy as np
 import pickle
 
-EMB_WIDTH = 300
+EMB_WIDTH = 150
 EMO_LEX = pickle.load(open('sentprop_lex_gnip.p', 'rb'))
 
 def read_tweets(data_file):

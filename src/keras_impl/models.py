@@ -232,7 +232,7 @@ class CNNClassifier(object):
         embedded_seq_text = self.word_emb_layer_text(sequence_input)
         embedded_seq_text = Dropout(kwargs['dropout'])(embedded_seq_text)
         embedded_seq_emo = self.word_emb_layer_emo(sequence_input)
-        embedded_seq_emo = Dropout(kwargs['dropout'])(embedded_seq_emo)
+        embedded_seq_emo = Reshape((len(W_e[0]) * kwargs['max_seq_len'],))(embedded_seq_emo)
         embedded_users = self.user_emb_layer_emo(user_input)
         embedded_users = Reshape((len(W_u[0]),))(embedded_users)
 
@@ -246,15 +246,16 @@ class CNNClassifier(object):
 
         conv_mxp_ops = []
         for conv_l in self.conv_ls:
-            _tmp_op = conv_l(embedded_seq_emo)
+            _tmp_op = conv_l(embedded_seq_text)
             _tmp_op = self.mxp_l(_tmp_op)
             _tmp_op = Dropout(kwargs['dropout'])(_tmp_op)
             conv_mxp_ops.append(_tmp_op)
         conv_op = concatenate(conv_mxp_ops, axis = 1)
 
         # Concat convolutional output with user embeddings, go through final Dense and Activation layers
-        combined = concatenate([conv_op, embedded_users], axis = 1)
-        dense_op = self.dense1(combined)
+        dense_in = conv_op
+        # dense_in = concatenate([dense_in, embedded_users], axis = 1)
+        dense_op = self.dense1(dense_in)
         clf_op = self.clf_op_layer(dense_op)
 
         self.model = Model(inputs = [sequence_input, user_input], outputs = clf_op)
