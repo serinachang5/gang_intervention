@@ -23,7 +23,7 @@ def read_tweets(data_file):
 
 def train_w2v(D):
     print 'Training word2vec on {} texts...'.format(len(D))
-    model = Word2Vec(D, size=EMB_WIDTH, min_count=5, iter=5, workers=4)
+    model = Word2Vec(D, size=EMB_WIDTH, min_count=7, iter=5, workers=4)
     w2v = model.wv
     print 'Vocab size:', len(w2v.vocab)
     return w2v

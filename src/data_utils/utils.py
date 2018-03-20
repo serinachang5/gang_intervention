@@ -39,10 +39,12 @@ def preprocess(tweet, is_word_level = False):
     tweet = re.sub('(::emoji::)', '', tweet)
     # replace &amp; with and
     tweet = re.sub('&amp;', 'and', tweet)
+
     if is_word_level:
         tknzr = TweetTokenizer()
         tokens = tknzr.tokenize(tweet)
         tweet = ' '.join(tokens)
+
     # replace user handles with a constant
     tweet = re.sub('@[0-9a-zA-Z_]+', '__USER_HANDLE__', tweet)
     # replace urls
@@ -89,32 +91,24 @@ def parse_line(line, text_column, label_column, tweet_id_column, user_name_colum
             day = '0' + day
         line[time_column] = '-'.join([year, month, day]) + ' ' + time
 
-    # take line (dict) as input and return text along with label if label is present
+    # processing tweet text
     if line[text_column] in (None, ''):
         return None, None, line[tweet_id_column], line[user_name_column], line[time_column]
-
     if stop_chars is not None:
         line[text_column] = [ch for ch in line[text_column] if ch not in stop_chars]
         line[text_column] = ''.join(line[text_column])
-
     if normalize:
         line[text_column] = preprocess(line[text_column], is_word_level = word_level)
-
-    # print line[text_column]
-
     if line[text_column] in (None, ''):
         return None, None, line[tweet_id_column], line[user_name_column], line[time_column]
-
     if word_level:
         line[text_column] = line[text_column].split(' ')
-
     if len(line[text_column]) > _max_len:
         line[text_column] = line[text_column][:_max_len]
-
     if add_ss_markers:
         line[text_column] = '< ' + line[text_column] + ' >'
-
     X_c = line[text_column]
+
     if label_column in line.keys():
         y_c = line[label_column]
     else:
