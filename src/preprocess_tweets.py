@@ -207,6 +207,31 @@ class TweetPreprocessor:
         print 'Number of emoji embeddings found:', (w2v_miss_count - emoji_miss_count)
         return W
 
+    def get_emo_embeddings(self, lfile = None, emb_dim = 3):
+        if lfile is not None:
+            w2e = pickle.load(open(lfile, 'rb'))
+            avg = np.mean(w2e.values(), axis=0)
+        else:
+            w2e = {}
+            avg = np.zeros(3)
+
+        W = np.zeros((len(self.token2idx), emb_dim))
+
+        w2e_miss_count = 0
+        for token in self.token2idx:
+            tok_low = token.lower()
+            if tok_low in w2e:
+                W[self.token2idx[token]] = w2e[tok_low]
+            else:
+                w2e_miss_count += 1
+                W[self.token2idx[token]] = avg
+
+        # just make sure the embedding corresponding to padding token is neutral
+        W[self.token2idx['__PAD__']] = avg
+
+        print 'Number of emo embeddings found:', (len(self.token2idx.keys()) - w2e_miss_count)
+        return W
+
     def print_stats(self):
         print 'Number of classes: ', len(self.label2idx)
         print 'Length distribution: ', self.len_dict
@@ -375,6 +400,8 @@ def main(args):
     # tweet_preprocessor.split_unlabeled_data(args['output_file_dir'], args['tweets_file'], split_ratio = 0.2)
     pickle.dump([W, tweet_preprocessor.token2idx, tweet_preprocessor.label2idx, tweet_preprocessor.counts, tweet_preprocessor.class_weights, tweet_preprocessor.max_len], open(os.path.join(args['output_file_dir'], 'dictionaries_' + time_stamp + '.p'), "wb"))
     # tweet_preprocessor.print_stats()
+    W = tweet_preprocessor.get_emo_embeddings(args['emolex_file'])
+    pickle.dump([W, tweet_preprocessor.token2idx], open(os.path.join(args['output_file_dir'], 'emo_embs_' + time_stamp + '.p'), "wb"))
     W = tweet_preprocessor.get_user_embeddings(args['user_file'])
     pickle.dump([W, tweet_preprocessor.user2idx], open(os.path.join(args['output_file_dir'], 'user_embs_' + time_stamp + '.p'), "wb"))
 
@@ -390,6 +417,7 @@ if __name__ == '__main__':
     parser.add_argument('-1h', '--use_one_hot', type = bool, default = False, help = 'If True, one hot vectors will be used instead of dense embeddings')
     parser.add_argument('-wfile', '--w2v_file', type = str, default = None, help = 'file containing pre-trained word2vec embeddings')
     parser.add_argument('-efile', '--emoji_file', type = str, default = None, help = 'file containing pre-trained emoji embeddings')
+    parser.add_argument('-lfile', '--emolex_file', type = str, default = None, help = 'file containing pre-trained sentiment embeddings')
     parser.add_argument('-ufile', '--user_file', type = str, default = None, help = 'file containing pre-trained user embeddings')
     parser.add_argument('-unld_tr', '--tweets_file_tr', type = str, default = None, help = 'unlabeled tweets file to be used for training language model')
     parser.add_argument('-unld_val', '--tweets_file_val', type = str, default = None, help = 'unlabeled tweets file to be used for validating language model')
