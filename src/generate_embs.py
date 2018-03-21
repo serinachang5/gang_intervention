@@ -4,7 +4,7 @@ from gensim.models import Word2Vec
 import numpy as np
 import pickle
 
-EMB_WIDTH = 150
+EMB_WIDTH = 100
 EMO_LEX = pickle.load(open('sentprop_lex_gnip.p', 'rb'))
 
 def read_tweets(data_file):
@@ -23,7 +23,7 @@ def read_tweets(data_file):
 
 def train_w2v(D):
     print 'Training word2vec on {} texts...'.format(len(D))
-    model = Word2Vec(D, size=EMB_WIDTH, min_count=7, iter=5, workers=4)
+    model = Word2Vec(D, size=EMB_WIDTH, min_count=10, iter=5, workers=4)
     w2v = model.wv
     print 'Vocab size:', len(w2v.vocab)
     return w2v
@@ -83,7 +83,7 @@ def main(args):
                 tokens.add(tok)
         print 'Number of unique tokens:', len(tokens)
 
-        save_file = args['save_file'] + '.h5'
+        save_file = args['save_file']
         w2v = train_w2v(tweets)
         w2v.save_word2vec_format(save_file, binary=True)
         print 'Saved w2v keyed vectors at', save_file
@@ -101,7 +101,7 @@ def main(args):
         print [x[1] for x in (user2tweets['younggodumb'][:5])], '\n'
         print [x[1] for x in (user2tweets['younggodumb'][-5:])], '\n'
 
-        save_file = args['save_file'] + '.p'
+        save_file = args['save_file']
         user_embs = compute_aff_profiles(user2tweets)
         # print user_embs['younggodumb']
         # print user_embs['tyquanassassin']
