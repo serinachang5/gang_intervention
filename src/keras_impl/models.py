@@ -5,7 +5,7 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.layers import Conv1D
 from keras.layers import Dropout
 from keras.layers import Input, Embedding, LSTM, Dense, Lambda, RepeatVector
-from keras.layers import MaxPooling1D, GlobalMaxPooling1D, concatenate, Maximum, Reshape
+from keras.layers import MaxPooling1D, GlobalMaxPooling1D, concatenate, Flatten, Reshape
 from keras.layers.wrappers import TimeDistributed
 from keras.models import Model
 import os, math, numpy as np
@@ -232,7 +232,7 @@ class CNNClassifier(object):
         embedded_seq_text = self.word_emb_layer_text(sequence_input)
         embedded_seq_text = Dropout(kwargs['dropout'])(embedded_seq_text)
         embedded_seq_emo = self.word_emb_layer_emo(sequence_input)
-        embedded_seq_emo = Reshape((len(W_e[0]) * kwargs['max_seq_len'],))(embedded_seq_emo)
+        embedded_seq_emo = Flatten()(embedded_seq_emo)
         embedded_users = self.user_emb_layer_emo(user_input)
         embedded_users = Reshape((len(W_u[0]),))(embedded_users)
 
@@ -254,7 +254,7 @@ class CNNClassifier(object):
 
         # Concat convolutional output with user embeddings, go through final Dense and Activation layers
         dense_in = conv_op
-        # dense_in = concatenate([dense_in, embedded_users], axis = 1)
+        dense_in = concatenate([dense_in, embedded_seq_emo, embedded_users], axis = 1)
         dense_op = self.dense1(dense_in)
         clf_op = self.clf_op_layer(dense_op)
 
