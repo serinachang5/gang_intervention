@@ -116,7 +116,7 @@ def parse_line(line, text_column, label_column, tweet_id_column, user_name_colum
 
     return X_c, y_c, line[tweet_id_column], line[user_name_column], line[time_column]
 
-def datum_to_string(X_ids, y_id, tweet_id, user_id, time_created):
+def datum_to_string(X_ids, y_id, tweet_id, window_ids):
 
     file_str = StringIO()
     file_str.write(','.join(X_ids).strip())
@@ -125,9 +125,7 @@ def datum_to_string(X_ids, y_id, tweet_id, user_id, time_created):
     file_str.write('<:>')
     file_str.write(tweet_id)
     file_str.write('<:>')
-    file_str.write(user_id)
-    file_str.write('<:>')
-    file_str.write(time_created)
+    file_str.write(','.join(window_ids).strip())
     return file_str.getvalue()
 
 def delete_files(flist):

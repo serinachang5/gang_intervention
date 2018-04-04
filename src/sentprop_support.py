@@ -1,6 +1,7 @@
 import argparse
 from data_utils.utils import unicode_csv_reader2, parse_line, get_delimiter, datum_to_string, delete_files
 from gensim.models import KeyedVectors
+import json
 import numpy as np
 import pickle
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -96,42 +97,38 @@ def eval_embeddings(wv_path, class_words):
             matrix[i][j] = avg_sim
     return matrix
 
-def write_embeddings(wv_path):
-    embs = load_w2v(wv_path)
+def write_embeddings(embs, ext): # embs is a dictionary of word to emb
     tokens = set()
-    with open('written_embs.txt', 'w') as f:
-        for word in embs.vocab:
+    written_file = 'written_embs_' + ext + '.txt'
+    lex_dump = 'lexicon_' + ext + '.p'
+    with open(written_file, 'w') as f:
+        for word in embs:
             tokens.add(word)
             result = word.encode('utf8') + '\t'
             emb = embs[word]
             result += ' '.join([str(x) for x in emb])
             result += '\n'
             f.write(result)
-    print 'Saved written_embs.txt'
-    pickle.dump(tokens, open('lexicon.p', 'wb'))
-    print 'Saved lexicon.p'
+    print 'Saved', written_file
+    pickle.dump(tokens, open(lex_dump, 'wb'))
+    print 'Saved', lex_dump
 
-def lex_embs_regression(lex_path, wv_path):
-    lex = pickle.load(open(lex_path, "rb"))
-    print len(lex)
-    embs = load_w2v(wv_path)
-    print len(embs.vocab)
+def lex_embs_regression(lex, embs):
+    print len(lex), len(embs)
 
     classes = ['loss', 'aggression', 'other']
     for idx,c in enumerate(classes):
         X = []
         y = []
 
-        for word in embs.vocab:
+        for word in embs:
             encoded = word.encode('utf8')
             if encoded in lex:
                 emb = embs[word]
                 X.append(emb)
-                scores = lex[word.encode('utf8')]
+                scores = lex[encoded]
                 sent_score = scores[idx]/sum(scores)
                 y.append([sent_score])
-            else:
-                print 'Could not find encoded in sentprop:', word
 
         reg = LinearRegression()
         reg.fit(X,y)
@@ -153,15 +150,22 @@ def main(args):
     write_embeddings(args['word2vec'])
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description = '')
-    parser.add_argument('-l', '--data_files', nargs = '+', type = str, default = None, help = 'filenames for raw texts')
-    parser.add_argument('-n', '--num_words', type = int, default = 20, help = 'number of unique words')
-    parser.add_argument('-c', '--cutoff', type = int, default = 30, help = 'x, s.t. unique must be unique from classes\' top x')
-    parser.add_argument('-s', '--save_file', type = str, default = None, help = 'filename for saving seed sets')
-    parser.add_argument('-wv', '--word2vec', type = str, default = None, help = 'path to w2v keyed vectors')
-    parser.add_argument('-sp', '--sentprop', type = str, default = None, help = 'path to sentprop lexicon')
+    # parser = argparse.ArgumentParser(description = '')
+    # parser.add_argument('-l', '--data_files', nargs = '+', type = str, default = None, help = 'filenames for raw texts')
+    # parser.add_argument('-n', '--num_words', type = int, default = 20, help = 'number of unique words')
+    # parser.add_argument('-c', '--cutoff', type = int, default = 30, help = 'x, s.t. unique must be unique from classes\' top x')
+    # parser.add_argument('-s', '--save_file', type = str, default = None, help = 'filename for saving seed sets')
+    # parser.add_argument('-wv', '--word2vec', type = str, default = None, help = 'path to w2v keyed vectors')
+    # parser.add_argument('-sp', '--sentprop', type = str, default = None, help = 'path to sentprop lexicon')
+    #
+    # args = vars(parser.parse_args())
 
-    args = vars(parser.parse_args())
-
-    # main(args)
-    lex_embs_regression(args['sentprop'], args['word2vec'])
+    wv_path = 'embeddings300.h5'
+    wv = load_w2v(wv_path)
+    embs = {}
+    for word in wv.vocab:
+        embs[word] = wv[word]
+    # write_embeddings(embs, 'svd')
+    lex_path = 'sentprop_lex_svd.p'
+    lex = pickle.load(open(lex_path, 'rb'))
+    lex_embs_regression(lex, embs)

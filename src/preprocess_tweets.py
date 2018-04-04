@@ -43,6 +43,62 @@ class TweetPreprocessor:
         self.len_dict = defaultdict(int)
         self.class2count = defaultdict(int)
 
+    def store_tweets(self, data_files, parser, text_column, label_column, tweet_id_column, user_name_column, time_column, encoding):
+        if data_files is None:
+            return
+
+        user2idx = {}
+        user2tweets = {}
+        for df in data_files:
+            delimiter = get_delimiter(df)
+            with open(df, 'r') as fhr:
+                reader = unicode_csv_reader2(fhr, encoding, delimiter = delimiter)
+                for row in reader:
+                    X_c, y_c, tweet_id, user_name, time_created = parser(row, text_column, label_column, tweet_id_column, user_name_column, time_column, self.max_len, stop_chars = self.stop_chars, normalize = self.normalize, word_level = self.word_level, add_ss_markers = self.add_ss_markers)
+                    if X_c is not None:
+                        if user_name in user2idx:
+                            user2tweets[user_name].append((X_c, time_created))
+                        else:
+                            user2idx[user_name] = len(user2idx)
+                            user2tweets[user_name] = [(X_c, time_created)]
+
+        users = sorted(user2idx.items(), key=lambda x: x[1])
+        self.user2first = {}
+        self.tweets = [None]
+        user_first = 1
+        for user,_ in users:
+            user_tweets = sorted(user2tweets[user], key=lambda x: x[1])
+            self.user2first[user] = user_first
+            user_first += len(user_tweets)
+            self.tweets.extend(user_tweets)
+        print self.tweets[:3]
+
+    def get_window(self, user_name, time_created):
+        window = []
+        if user_name not in self.user2first:
+            pass
+        else:
+            user_first = self.user2first[user_name] # id of user's first tweet
+            window_end = user_first
+            while window_end < len(self.tweets) and self.tweets[window_end][1] < time_created:
+                window_end += 1
+            # window_end is the id of the first tweet after time_created
+            if window_end == user_first: # all tweets come after tweet in question
+                pass
+            else:
+                window_start = window_end-1
+                while window_start > user_first and (window_end - window_start) < 5: # up to the 5 most recent tweets
+                    window_start -= 1
+                # window start == user_first OR window is 5 tweets
+                window = range(window_start, window_end)
+        to_str = []
+        for i in range(5):
+            if i < len(window):
+                to_str.append(str(window[i]))
+            else:
+                to_str.append('0')
+        return to_str
+
     def read_data(self, output_files_dir, data_file, parser, text_column, label_column, tweet_id_column, user_name_column, time_column, encoding, is_train = False):
 
         if data_file is None:
@@ -68,7 +124,6 @@ class TweetPreprocessor:
                     fhw2.write('\n')
                     continue
                 X_ids = self.update_token2idx(X_c)
-                user_id = self.update_user2idx(user_name)
                 # _tmp = ','.join(X_ids)
                 if y_c is not None:
                     y_id = self.update_label2idx(y_c)
@@ -79,7 +134,8 @@ class TweetPreprocessor:
                 if is_train and y_id != '':
                     self.class2count[int(y_id)] += 1
 
-                fhw1.write(datum_to_string(X_ids, y_id, tweet_id, user_id, time_created))
+                window_ids = self.get_window(user_name, time_created)
+                fhw1.write(datum_to_string(X_ids, y_id, tweet_id, window_ids))
                 fhw1.write('\n')
 
         return indices_file
@@ -219,20 +275,57 @@ class TweetPreprocessor:
         W = np.zeros((len(self.token2idx), emb_dim))
 
         w2e_miss_count = 0
-        for token in self.token2idx:
-            encoded = token.encode('utf8')
+        for tok in self.token2idx:
+            encoded = tok.encode('utf8')
             if encoded in w2e:
                 scores = w2e[encoded]
                 scores = [x/sum(scores) for x in scores]
-                W[self.token2idx[token]] = scores
+                W[self.token2idx[tok]] = scores
             else:
                 w2e_miss_count += 1
-                W[self.token2idx[token]] = neu
+                W[self.token2idx[tok]] = neu
 
-        # just make sure the embedding corresponding to padding token is neutral
         W[self.token2idx['__PAD__']] = neu
-
         print 'Number of emo embeddings found:', (len(self.token2idx.keys()) - w2e_miss_count)
+        return W
+
+    def get_tweet_emo(self, lfile = None, emb_dim = 3):
+        if lfile is not None:
+            w2e = pickle.load(open(lfile, 'rb'))
+            avg = np.mean(w2e.values(), axis=0)
+            neu = [x/sum(avg) for x in avg]
+        else:
+            w2e = {}
+            neu = np.zeros(3)
+
+        W = np.zeros((len(self.tweets), emb_dim))
+
+        tweet_rep = 0
+        for twe_i, tuple in enumerate(self.tweets):
+            if tuple is None:
+                W[twe_i] = neu
+                tweet_rep += 1
+            else:
+                tweet, date = tuple
+                max_loss = 0
+                max_agg = 0
+                max_oth = 0
+                for tok in tweet:
+                    encoded = tok.encode('utf8')
+                    if encoded in w2e:
+                        scores = w2e[encoded]
+                        l,a,o = [x/sum(scores) for x in scores]
+                        max_loss = max(max_loss, l)
+                        max_agg = max(max_agg, a)
+                        max_oth = max(max_oth, o)
+                if max_loss == 0:
+                    tweet_emb = neu
+                else:
+                    tweet_rep += 1
+                    tweet_emb = [max_loss, max_agg, max_oth]
+                W[twe_i] = tweet_emb
+        print W[:5]
+        print 'Number of tweets represented: {} out of {}'.format(tweet_rep, len(self.tweets))
         return W
 
     def print_stats(self):
@@ -313,6 +406,7 @@ class TweetPreprocessor:
                 for line in fhr1:
                     x_y_tid = line.strip().split('<:>')
                     idx_lst = x_y_tid[0].split(',')
+                    window_lst = x_y_tid[3].split(',')
                     new_idx_lst = []
                     for idx in idx_lst:
                         idx = int(idx)
@@ -326,7 +420,7 @@ class TweetPreprocessor:
                     else:
                         fhw2.write(','.join([x_y_tid[2], self.wsp.join([_idx2token[int(idx)].encode('utf8') for idx in new_idx_lst])]))
                         fhw2.write('\n')
-                        fhw1.write(datum_to_string(new_idx_lst, x_y_tid[1], x_y_tid[2], x_y_tid[3], x_y_tid[4]))
+                        fhw1.write(datum_to_string(new_idx_lst, x_y_tid[1], x_y_tid[2], window_lst))
                         fhw1.write('\n')
 
         # delete old files
@@ -334,28 +428,6 @@ class TweetPreprocessor:
 
         print 'Tweet drop statistics:'
         print tweets_dropped
-
-    def get_user_embeddings(self, ufile = None, emb_dim = 3):
-        if ufile is not None:
-            u2e = pickle.load(open(ufile, 'rb'))
-            avg = np.mean(u2e.values(), axis=0)
-        else:
-            u2e = {}
-            avg = np.zeros(3)
-
-        W = np.zeros((len(self.user2idx), emb_dim))
-
-        user_miss_count = 0
-        for user in self.user2idx:
-            if user in u2e:
-                W[self.user2idx[user]] = u2e[user]
-            else:
-                user_miss_count += 1
-                W[self.user2idx[user]] = avg
-
-        print 'Number of users in vocabulary:', len(self.user2idx)
-        print 'Number of user embeddings found:', (len(self.user2idx) - user_miss_count)
-        return W
 
 def print_args(args):
 
@@ -375,6 +447,12 @@ def main(args):
     unlabeled_files = []
     labeled_files = []
     tweet_preprocessor = TweetPreprocessor(stop_chars, time_stamp, max_len = max_len, word_level = args['word_level'], normalize = args['normalize'], add_ss_markers = args['add_ss_markers'])
+    if args['store_files'] is not None:
+        print 'Storing data . . .'
+        tweet_preprocessor.store_tweets(args['store_files'], parse_line, 'text', 'label', 'tweet_id', 'user_name', 'created_at', 'utf8')
+    if args['store_files'] is None and args['train_file'] is not None:
+        print 'Storing training data . . .'
+        tweet_preprocessor.store_tweets([args['train_file']], parse_line, 'text', 'label', 'tweet_id', 'user_name', 'created_at', 'utf8')
     if args['train_file'] is not None:
         print 'Processing training set . . .'
         labeled_files.append(tweet_preprocessor.read_data(args['output_file_dir'], args['train_file'], parse_line, 'text', 'label', 'tweet_id', 'user_name', 'created_at', 'utf8', is_train = True))
@@ -391,9 +469,9 @@ def main(args):
         print 'Processing unlabeled validation set . . .'
         unlabeled_files.append(tweet_preprocessor.read_data(args['output_file_dir'], args['tweets_file_val'], parse_line, 'text', 'label', 'tweet_id', 'user_name', 'created_at', 'utf8'))
 
-    # print 'Re-mapping token2idx . . .'
+    print 'Re-mapping token2idx . . .'
     tweet_preprocessor.remap(labeled_files, unlabeled_files)
-
+    #
     # At this point the padding token is already in token2idx
     tweet_preprocessor.get_class_weights()
     if args['use_one_hot']:
@@ -401,16 +479,18 @@ def main(args):
     else:
         W = tweet_preprocessor.get_dense_embeddings(args['w2v_file'], args['emoji_file'], args['emb_dim'])
     # tweet_preprocessor.split_unlabeled_data(args['output_file_dir'], args['tweets_file'], split_ratio = 0.2)
-    pickle.dump([W, tweet_preprocessor.token2idx, tweet_preprocessor.label2idx, tweet_preprocessor.counts, tweet_preprocessor.class_weights, tweet_preprocessor.max_len], open(os.path.join(args['output_file_dir'], 'dictionaries_' + time_stamp + '.p'), "wb"))
+    pickle.dump([W, tweet_preprocessor.token2idx, tweet_preprocessor.label2idx, tweet_preprocessor.counts, tweet_preprocessor.class_weights, tweet_preprocessor.max_len], open(os.path.join(args['output_file_dir'], 'dictionaries_' + time_stamp + '.p'), 'wb'))
     # tweet_preprocessor.print_stats()
     W = tweet_preprocessor.get_emo_embeddings(args['emolex_file'])
-    pickle.dump([W, tweet_preprocessor.token2idx], open(os.path.join(args['output_file_dir'], 'emo_embs_' + time_stamp + '.p'), "wb"))
-    W = tweet_preprocessor.get_user_embeddings(args['user_file'])
-    pickle.dump([W, tweet_preprocessor.user2idx], open(os.path.join(args['output_file_dir'], 'user_embs_' + time_stamp + '.p'), "wb"))
+    pickle.dump(W, open(os.path.join(args['output_file_dir'], 'emo_embs_' + time_stamp + '.p'), 'wb'))
+    W = tweet_preprocessor.get_tweet_emo(args['emolex_file'])
+    pickle.dump(W, open(os.path.join(args['output_file_dir'], 'tweet_emo_' + time_stamp + '.p'), 'wb'))
+
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description = '')
+    parser.add_argument('-st', '--store_files', nargs = '+', type = str, default = None, help = 'set of tweets to store for emo profiles')
     parser.add_argument('-tr', '--train_file', type = str, default = None, help = 'labeled train set')
     parser.add_argument('-val', '--val_file', type = str, default = None, help = 'labeled validation set')
     parser.add_argument('-tst', '--test_file', type = str, default = None, help = 'labeled test set')
@@ -418,10 +498,11 @@ if __name__ == '__main__':
 
     parser.add_argument('-sch', '--stop_chars_file', type = str, default = None, help = 'file containing stop characters/words')
     parser.add_argument('-1h', '--use_one_hot', type = bool, default = False, help = 'If True, one hot vectors will be used instead of dense embeddings')
+
     parser.add_argument('-wfile', '--w2v_file', type = str, default = None, help = 'file containing pre-trained word2vec embeddings')
     parser.add_argument('-efile', '--emoji_file', type = str, default = None, help = 'file containing pre-trained emoji embeddings')
-    parser.add_argument('-lfile', '--emolex_file', type = str, default = None, help = 'file containing pre-trained sentiment embeddings')
-    parser.add_argument('-ufile', '--user_file', type = str, default = None, help = 'file containing pre-trained user embeddings')
+    parser.add_argument('-lfile', '--emolex_file', type = str, default = None, help = 'file containing pre-trained emotion embeddings')
+
     parser.add_argument('-unld_tr', '--tweets_file_tr', type = str, default = None, help = 'unlabeled tweets file to be used for training language model')
     parser.add_argument('-unld_val', '--tweets_file_val', type = str, default = None, help = 'unlabeled tweets file to be used for validating language model')
     parser.add_argument('-nor', '--normalize', type = bool, default = True, help = 'If True, the tweets will be normalized. Check "preprocess" method')

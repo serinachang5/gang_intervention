@@ -9,6 +9,8 @@ from sklearn.feature_extraction.text import CountVectorizer
 EMB_WIDTH = 300
 EMO_LEX = pickle.load(open('sentprop_lex_gnip.p', 'rb'))
 
+DEBUGGING = True
+
 def read_tweets(data_file, join=False):
     tweets = []
     delimiter = get_delimiter(data_file)
@@ -32,43 +34,40 @@ def train_w2v(D):
     print 'Vocab size:', len(w2v.vocab)
     return w2v
 
-def make_ppmi_embs(D, save_file, dim=300):
+def make_ppmi_embs(D, dim=300):
     mat, vocab = get_ppmi(D)
+    print 'PPMI for word0, 0-20:', mat[0][:20]
     u,s,v = np.linalg.svd(mat)
     print 'Computed SVD'
-    s_sorted = sorted(range(len(s)), key=lambda i: s[i], reverse=True)
-    keep_dims = s_sorted[:dim]
+    print 'Emb for word0, up to dim20:', u[0][:20]
     embs = {}
     for i, word in enumerate(vocab):
         ui = u[i]
-        embs[word] = [ui[d] for d in keep_dims]
-    print 'Embedding dim:', len(embs['Rip'])
-    json.dump(embs, open(save_file, 'wb'))
-    print 'Saved word embeddings at', save_file
+        embs[word] = (ui[:dim]).tolist()
+    print 'Embedding dim:', len(embs['You'])
     return embs
 
 def get_ppmi(D):
     count_model = CountVectorizer(lowercase=False, min_df=10)
-    counts = count_model.fit_transform(D)
+    counts = count_model.fit_transform(D) # counts is (n,v) - need to keep sparse
     vocab = sorted(count_model.vocabulary_.items(), key=lambda x: x[1])
     vocab = [x[0] for x in vocab]
     n,v = counts.shape
     print 'n = {}, v = {}'.format(n,v)
 
     counts.data = np.fmin(np.ones(counts.data.shape), counts.data)
-    coo = (counts.T).dot(counts)
+    coo = (counts.T).dot(counts) # coo is (v,v)
     coo.setdiag(0) # fill same word co-occurence to 0
 
     df = counts.sum(axis=0) # doc freqs
     row_mat = np.ones((v, v), dtype=np.float)
     for i in range(v):
-        prob = df[0,i] / n
+        prob = df[0,i] / n # df is (1,v)
         row_mat[i,:] = prob
     col_mat = row_mat.T
 
-    smooth = 1.0
-    joint = (coo.toarray() + smooth) / (n + smooth)
-    P = joint * row_mat * col_mat # elementwise
+    joint = coo.toarray() / n # not smoothing bc min_df set to 10
+    P = joint / (row_mat * col_mat) # elementwise
     with np.errstate(divide='ignore'): # ignore 0
         P = np.fmax(np.zeros((v, v), dtype=np.float), np.log(P))
     print 'Computed PPMI:', P.shape
@@ -206,7 +205,9 @@ def main(args):
         # w2v = train_w2v(tweets)
         # w2v.save_word2vec_format(save_file, binary=True)
         # print 'Saved w2v keyed vectors at', save_file
-        make_ppmi_embs(tweets, save_file)
+        embs = make_ppmi_embs(tweets)
+        json.dump(embs, open(save_file, 'wb'))
+        print 'Saved word embeddings at', save_file
 
     elif args['embedding_type'] == 'user':
         user2tweets = {}
@@ -250,8 +251,9 @@ if __name__ == '__main__':
     args = vars(parser.parse_args())
 
     main(args)
-    #
+
     # D = ['hi it is me',
     #      'how is it going',
     #      'it going well']
-    # print make_ppmi_embs(D)
+    # print D
+    # embs = make_ppmi_embs(D)

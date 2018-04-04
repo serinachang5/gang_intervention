@@ -90,19 +90,18 @@ def load_corpus(args):
     if args == None:
         return None
 
-    corpus = TweetCorpus(args['train_file'], args['val_file'], args['test_file'], args['unld_train_file'], args['unld_val_file'], args['dictionaries_file'], args['emo_embs_file'], args['user_embeddings_file'])
+    corpus = TweetCorpus(args['train_file'], args['val_file'], args['test_file'], args['unld_train_file'], args['unld_val_file'], args['dictionaries_file'], args['emo_embs_file'], args['tweet_emo_file'])
 
     args['max_seq_len'] = corpus.max_len
     args['nclasses'] = len(corpus.label2idx)
     args['ntokens'] = len(corpus.token2idx)
-
-    args['nusers'] = len(corpus.user2idx)
 
     if args['arch_type'] == 'cnn':
         args['kernel_sizes'] = [1, 2, 3, 4, 5]
 
     # check if W is one hot or dense
     if corpus.W[0][0] == 1:
+        print 'is one hot'
         args['trainable'] = False
     else:
         args['trainable'] = True
@@ -147,7 +146,7 @@ def main(args):
         else:
             # args['kernel_sizes'] = [1, 2, 3, 4, 5]
             print 'Creating CNN classifier model . . .'
-            clf = CNNClassifier(corpus.W, corpus.W_e, corpus.W_u, args)
+            clf = CNNClassifier(corpus.W, corpus.W_e, corpus.W_t, args)
             # if the weights from the pre-trained cnn exists then use those weights instead
             if args['trained_model'] is not None and os.path.isfile(args['trained_model']):
                 print 'Loading weights from trained CNN model . . .'
@@ -204,10 +203,11 @@ def parse_arguments():
     parser.add_argument('-tr', '--train_file', type = str, default = None, help = 'labeled train file')
     parser.add_argument('-val', '--val_file', type = str, default = None, help = 'labeled validation file')
     parser.add_argument('-tst', '--test_file', type = str, default = None, help = 'labeled test file')
-    parser.add_argument('-dict', '--dictionaries_file', type = str, default = None, help = 'pickled dictionary file (run preprocess_tweets.py to generate the dictionary file)')
-    parser.add_argument('-emo', '--emo_embs_file', type = str, default = None, help = 'pickled emo embeddings file (run preprocess_tweets.py to generate the dictionary file)')
-    parser.add_argument('-usrs', '--user_embeddings_file', type = str, default = None, help = 'pickled file of user embeddings (run preprocess_tweets.py to generate the dictionary file')
+    parser.add_argument('-dict', '--dictionaries_file', type = str, default = None, help = 'pickled dictionary file (run preprocess_tweets.py to generate)')
+    parser.add_argument('-emo', '--emo_embs_file', type = str, default = None, help = 'pickled emo embeddings file (run preprocess_tweets.py to generate)')
+    parser.add_argument('-twe', '--tweet_emo_file', type = str, default = None, help = 'pickled tweet emo embeddings file (run preprocess_tweets.py to generate)')
     parser.add_argument('-sdir', '--model_save_dir', type = str, default = None, help = 'directory where trained model should be saved')
+
     parser.add_argument('-md', '--mode', type = str, default = 'clf', help = 'mode (clf,clf_cv,lm)')
     parser.add_argument('-at', '--arch_type', type = str, default = 'cnn', help = 'Type of architecture (lstm,cnn)')
     parser.add_argument('-tm', '--trained_model', type = str, default = None, help = 'Path to trained model file. If provided, training will be continued from this model.')

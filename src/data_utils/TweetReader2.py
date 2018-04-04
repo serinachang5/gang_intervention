@@ -41,15 +41,15 @@ def add_pad_token(X, pad_token_idx, max_len):
 
 def parse_line(line, mode):
     x_y = line.split('<:>')
-    indices = [int(ch) for ch in x_y[0].split(',')]
+    seq = [int(ch) for ch in x_y[0].split(',')]
     if mode == 'lm':
         y = None
     elif mode == 'clf':
         y = [int(x_y[1])]
     elif mode == 'seq2seq':
-        y = indices
-    user = [int(x_y[3])]
-    return indices, user, y
+        y = seq
+    window = [int(ch) for ch in x_y[3].split(',')]
+    return seq, window, y
 
 def get_line_count(fname):
     p = subprocess.Popen(['wc', '-l', fname], stdout = subprocess.PIPE,
@@ -63,7 +63,7 @@ class Corpus:
     # in-memory data
     def __init__(self, data_file, mode):
         self.X_seq = []
-        self.X_user = []
+        self.X_window = []
         self.y = []
         self.read_data(data_file, mode)
         print 'Number of lines in %s: %d' % (data_file, len(self.X_seq))
@@ -72,13 +72,13 @@ class Corpus:
 
         with open(data_file, 'r') as fh:
             for line in fh:
-                indices, user, y = parse_line(line, mode)
-                self.X_seq.append(indices)
-                self.X_user.append(user)
+                seq, window, y = parse_line(line, mode)
+                self.X_seq.append(seq)
+                self.X_window.append(window)
                 self.y.append(y)
 
         self.X_seq = np.asarray(self.X_seq)
-        self.X_user = np.asarray(self.X_user)
+        self.X_window = np.asarray(self.X_window)
         self.y = np.asarray(self.y)
 
 class Generator:
@@ -124,11 +124,11 @@ class Generator:
 
 class TweetCorpus:
 
-    def __init__(self, train_file = None, val_file = None, test_file = None, unld_train_file = None, unld_val_file = None, dictionaries_file = None, emo_lex_file = None, users_file = None):
+    def __init__(self, train_file = None, val_file = None, test_file = None, unld_train_file = None, unld_val_file = None, dictionaries_file = None, emo_embs_file = None, tweet_emo_file = None):
 
-        self.W, self.token2idx, self.label2idx, self.counts, self.class_weights, self.max_len = pickle.load(open(dictionaries_file, "rb"))
-        self.W_e, _ = pickle.load(open(emo_lex_file, "rb"))
-        self.W_u, self.user2idx = pickle.load(open(users_file, "rb"))
+        self.W, self.token2idx, self.label2idx, self.counts, self.class_weights, self.max_len = pickle.load(open(dictionaries_file, 'rb'))
+        self.W_e = pickle.load(open(emo_embs_file, 'rb'))
+        self.W_t = pickle.load(open(tweet_emo_file, 'rb'))
 
         self.pad_token_idx = self.token2idx['__PAD__']
         self.idx2token = {v:k for k, v in self.token2idx.iteritems()}
@@ -164,24 +164,24 @@ class TweetCorpus:
         y_tr = None
         if self.tr_data is not None:
             X_tr_seq = add_pad_token(self.tr_data.X_seq, self.pad_token_idx, self.max_len)
-            X_tr_user = self.tr_data.X_user
-            X_tr = [X_tr_seq, X_tr_user]
+            X_tr_window = self.tr_data.X_window
+            X_tr = [X_tr_seq, X_tr_window]
             y_tr = np_utils.to_categorical(self.tr_data.y, len(self.label2idx))
 
         X_val = None
         y_val = None
         if self.val_data is not None:
             X_val_seq = add_pad_token(self.val_data.X_seq, self.pad_token_idx, self.max_len)
-            X_val_user = self.val_data.X_user
-            X_val = [X_val_seq, X_val_user]
+            X_val_window = self.val_data.X_window
+            X_val = [X_val_seq, X_val_window]
             y_val = np_utils.to_categorical(self.val_data.y, len(self.label2idx))
 
         X_te = None
         y_te = None
         if self.te_data is not None:
             X_te_seq = add_pad_token(self.te_data.X_seq, self.pad_token_idx, self.max_len)
-            X_te_user = self.te_data.X_user
-            X_te = [X_te_seq, X_te_user]
+            X_te_window = self.te_data.X_window
+            X_te = [X_te_seq, X_te_window]
             y_te = np_utils.to_categorical(self.te_data.y, len(self.label2idx))
 
         return X_tr, X_val, X_te, y_tr, y_val, y_te
