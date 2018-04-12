@@ -6,7 +6,6 @@ import numpy as np
 import pickle
 from sklearn.feature_extraction.text import CountVectorizer
 
-EMB_WIDTH = 300
 EMO_LEX = pickle.load(open('sentprop_lex_gnip.p', 'rb'))
 
 DEBUGGING = True
@@ -29,7 +28,7 @@ def read_tweets(data_file, join=False):
 
 def train_w2v(D):
     print 'Training word2vec on {} texts...'.format(len(D))
-    model = Word2Vec(D, size=EMB_WIDTH, min_count=10, iter=5, workers=4)
+    model = Word2Vec(D, size=300, min_count=10, iter=20, workers=4)
     w2v = model.wv
     print 'Vocab size:', len(w2v.vocab)
     return w2v
@@ -48,30 +47,33 @@ def make_ppmi_embs(D, dim=300):
     return embs
 
 def get_ppmi(D):
-    count_model = CountVectorizer(lowercase=False, min_df=10)
+    count_model = CountVectorizer(lowercase=True, max_features=20000)
     counts = count_model.fit_transform(D) # counts is (n,v) - need to keep sparse
-    vocab = sorted(count_model.vocabulary_.items(), key=lambda x: x[1])
-    vocab = [x[0] for x in vocab]
+    counts.data = np.fmin(np.ones(counts.data.shape), counts.data) # cap at 1
     n,v = counts.shape
     print 'n = {}, v = {}'.format(n,v)
+    vocab = sorted(count_model.vocabulary_.items(), key=lambda x: x[1])
+    vocab = [x[0] for x in vocab]
+    print 'First 10 words in vocab:', vocab[:10]
 
-    counts.data = np.fmin(np.ones(counts.data.shape), counts.data)
-    coo = (counts.T).dot(counts) # coo is (v,v)
-    coo.setdiag(0) # fill same word co-occurence to 0
-
-    df = counts.sum(axis=0) # doc freqs
-    row_mat = np.ones((v, v), dtype=np.float)
-    for i in range(v):
-        prob = df[0,i] / n # df is (1,v)
-        row_mat[i,:] = prob
-    col_mat = row_mat.T
-
-    joint = coo.toarray() / n # not smoothing bc min_df set to 10
-    P = joint / (row_mat * col_mat) # elementwise
-    with np.errstate(divide='ignore'): # ignore 0
-        P = np.fmax(np.zeros((v, v), dtype=np.float), np.log(P))
-    print 'Computed PPMI:', P.shape
-    return P, vocab
+    # coo = (counts.T).dot(counts)
+    # coo.setdiag(1) # fill same word co-occurence to 1 so every word has at least one coo
+    #
+    # marginalized = coo.sum(axis=0) # num of coo per x
+    # prob_norm = coo.sum() # all coo
+    # print 'Prob_norm:', prob_norm
+    # row_mat = np.ones((v, v), dtype=np.float)
+    # for i in range(v):
+    #     prob = marginalized[0,i] / prob_norm
+    #     row_mat[i,:] = prob
+    # col_mat = row_mat.T
+    # joint = coo.toarray() / prob_norm
+    #
+    # P = joint / (row_mat * col_mat) # elementwise
+    # with np.errstate(divide='ignore'): # ignore 0
+    #     P = np.fmax(np.zeros((v, v), dtype=np.float), np.log(P))
+    # print 'Computed PPMI:', P.shape
+    # return P, vocab
 
 def get_ppmi2(D):
     count_model = CountVectorizer(lowercase=False, min_df=5)
@@ -186,10 +188,39 @@ def compute_aff_tweets(lex_path, u2t):
         user2embs[user] = sent_scores
     return user2embs
 
+def check_rep(rep_name):
+    saved = pickle.load(open(rep_name, 'rb'))
+    rep1 = saved[3]
+    print rep1.shape
+    print np.count_nonzero(rep1)
+    # rep2 = saved[4]
+    # print rep2.shape
+    # print np.count_nonzero(rep2)
+    #for arr in rep:
+        #print np.count_nonzero(arr)
+
 def main(args):
     fnames = args['data_files']
 
-    if args['embedding_type'] == 'word':
+    if args['embedding_type'] == 'w2v':
+        tweets = []
+        for fn in fnames:
+            print 'Reading data from {}...'.format(fn)
+            tweets += read_tweets(fn, join=False)
+
+        tokens = set()
+        for tweet in tweets:
+            for tok in tweet:
+                tokens.add(tok)
+        print 'Number of unique tokens:', len(tokens)
+
+        save_file = args['save_file']
+        w2v_save = save_file + '_w2v'
+        w2v = train_w2v(tweets)
+        w2v.save_word2vec_format(w2v_save, binary=True)
+        print 'Saved w2v keyed vectors at', w2v_save
+
+    elif args['embedding_type'] == 'svd':
         tweets = []
         for fn in fnames:
             print 'Reading data from {}...'.format(fn)
@@ -202,12 +233,10 @@ def main(args):
         print 'Number of unique tokens:', len(tokens)
 
         save_file = args['save_file']
-        # w2v = train_w2v(tweets)
-        # w2v.save_word2vec_format(save_file, binary=True)
-        # print 'Saved w2v keyed vectors at', save_file
+        svd_save = save_file + '_svd'
         embs = make_ppmi_embs(tweets)
-        json.dump(embs, open(save_file, 'wb'))
-        print 'Saved word embeddings at', save_file
+        json.dump(embs, open(svd_save, 'wb'))
+        print 'Saved word embeddings at', svd_save
 
     elif args['embedding_type'] == 'user':
         user2tweets = {}
@@ -252,8 +281,10 @@ if __name__ == '__main__':
 
     main(args)
 
-    # D = ['hi it is me',
+    # D = ['Hi it is me',
     #      'how is it going',
-    #      'it going well']
+    #      'It going well',
+    #      'You']
     # print D
     # embs = make_ppmi_embs(D)
+    # check_rep('./saved/best_prediction_2018_04_09_11_44_39.p')

@@ -187,13 +187,19 @@ class TweetCorpus:
         return X_tr, X_val, X_te, y_tr, y_val, y_te
 
     def get_data_for_cross_validation(self, folds = 3):
-        (X_tr,_), (X_val,_), _, y_tr, y_val, _ = self.get_data_for_classification()
+        X_tr, X_val, _, y_tr, y_val, _ = self.get_data_for_classification()
+        seq_len = X_tr[0].shape[1]
+        X_tr = np.concatenate((X_tr[0], X_tr[1]), axis = 1)
+        X_val = np.concatenate((X_val[0], X_val[1]), axis = 1)
         # combine X_train, X_val and use the combined dataset for cross validation
         X_train = np.concatenate((X_tr, X_val), axis = 0)
         y_train = np.concatenate((y_tr, y_val), axis = 0)
         skf = StratifiedKFold(n_splits = folds)
         for train_index, test_index in skf.split(X_train, np.argmax(y_train, axis = 1)):
-            yield X_train[train_index], X_train[test_index], y_train[train_index], y_train[test_index]
+            this_X_train = [X_train[train_index, :seq_len], X_train[train_index, seq_len:]]
+            print len(this_X_train[0])
+            this_X_test = [X_train[test_index, :seq_len], X_train[test_index, seq_len:]]
+            yield this_X_train, this_X_test, y_train[train_index], y_train[test_index]
 
     def get_data_for_lm(self, truncate = False, context_size = 10):
         if truncate:

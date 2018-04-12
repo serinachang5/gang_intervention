@@ -155,9 +155,9 @@ def main(args):
         print 'Training classifier model . . .'
         X_train, X_val, X_test, y_train, y_val, y_test = corpus.get_data_for_classification()
         # preds are output class probabilities
-        preds = clf.fit(X_train, X_val, X_test, y_train, y_val, corpus.class_weights, args)
+        preds, reps1, reps2 = clf.fit(X_train, X_val, X_test, y_train, y_val, corpus.class_weights, args)
         print classification_report(np.argmax(y_test, axis = 1), np.argmax(preds, axis = 1), target_names = corpus.get_class_names())
-        pickle.dump([np.argmax(y_test, axis = 1), np.argmax(preds, axis = 1), preds, corpus.get_class_names()], open(os.path.join(args['model_save_dir'], 'best_prediction_' + args['ts'] + '.p'), 'wb'))
+        pickle.dump([np.argmax(y_test, axis = 1), np.argmax(preds, axis = 1), preds, reps1, reps2, corpus.get_class_names()], open(os.path.join(args['model_save_dir'], 'best_prediction_' + args['ts'] + '.p'), 'wb'))
     elif args['mode'] == 'clf_cv':
         # perform cross validation
         preds_all = []
@@ -176,13 +176,13 @@ def main(args):
             else:
                 # args['kernel_sizes'] = [1, 2, 3, 4, 5]
                 print 'Creating CNN classifier model . . .'
-                clf = CNNClassifier(corpus.W, corpus.W_e, corpus.W_u, args)
+                clf = CNNClassifier(corpus.W, corpus.W_e, corpus.W_t, args)
                 # if the weights from the pre-trained cnn exists then use those weights instead
                 if args['trained_model'] is not None and os.path.isfile(args['trained_model']):
                     print 'Loading weights from trained CNN model . . .'
                     clf.model.load_weights(args['trained_model'], by_name = True)
             print 'Training classifier model . . .'
-            preds = clf.fit(X_train, X_val, X_val, y_train, y_val, corpus.class_weights, args)
+            preds, reps1, reps2 = clf.fit(X_train, X_val, X_val, y_train, y_val, corpus.class_weights, args)
             preds_all.extend(preds)
             y_all.extend(y_val)
         print classification_report(np.argmax(y_all, axis = 1), np.argmax(preds_all, axis = 1), target_names = corpus.get_class_names())

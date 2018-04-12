@@ -134,6 +134,27 @@ def lex_embs_regression(lex, embs):
         reg.fit(X,y)
         print '{}: r-squared={}'.format(c, reg.score(X,y))
 
+def qualitative(splex):
+    loss_top, agg_top, other_top = pickle.load(open('seed_sets.p', 'rb'))
+    print 'LOSS SEED SET'
+    for word in loss_top:
+        if word in splex:
+            scores = splex[word]
+            scores = [round(x/sum(scores),3) for x in scores]
+            print '{}: {}'.format(word, scores)
+    print 'AGG SEED SET'
+    for word in agg_top:
+        if word in splex:
+            scores = splex[word]
+            scores = [round(x/sum(scores),3) for x in scores]
+            print '{}: {}'.format(word, scores)
+    print 'OTHER SEED SET'
+    for word in other_top:
+        if word in splex:
+            scores = splex[word]
+            scores = [round(x/sum(scores),3) for x in scores]
+            print '{}: {}'.format(word, scores)
+
 def main(args):
     print 'TOP {} WORDS & UNIQUE FROM OTHER CLASSES\' TOP {}...'.format(args['num_words'], args['cutoff'])
     loss_top, agg_top, other_top = get_top_words(args['data_files'], args['num_words'], args['cutoff'])
@@ -160,12 +181,17 @@ if __name__ == "__main__":
     #
     # args = vars(parser.parse_args())
 
-    wv_path = 'embeddings300.h5'
-    wv = load_w2v(wv_path)
-    embs = {}
-    for word in wv.vocab:
-        embs[word] = wv[word]
-    # write_embeddings(embs, 'svd')
-    lex_path = 'sentprop_lex_svd.p'
+    # wv_path = 'embs300_nov27unlabeled_2_w2v'
+    # wv = load_w2v(wv_path)
+    # embs = {}
+    # for word in wv.vocab:
+    #     embs[word] = wv[word]
+    # write_embeddings(embs, 'w2v')
+    svd_path = 'embs300_nov27unlabeled_svd'
+    embs = json.load(open(svd_path, 'rb'))
+    lex_path = 'splex_nov27unlabeled_svd.p'
     lex = pickle.load(open(lex_path, 'rb'))
     lex_embs_regression(lex, embs)
+    # qualitative(lex)
+    # embs = json.load(open('embs300_nov27unlabeled_svd', 'rb'))
+    # write_embeddings(embs, 'nov27unlabeled_svd')
