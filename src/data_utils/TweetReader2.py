@@ -124,11 +124,10 @@ class Generator:
 
 class TweetCorpus:
 
-    def __init__(self, train_file = None, val_file = None, test_file = None, unld_train_file = None, unld_val_file = None, dictionaries_file = None, emo_embs_file = None, tweet_emo_file = None):
+    def __init__(self, train_file = None, val_file = None, test_file = None, unld_train_file = None, unld_val_file = None, dictionaries_file = None, tweet_tags_file = None):
 
         self.W, self.token2idx, self.label2idx, self.counts, self.class_weights, self.max_len = pickle.load(open(dictionaries_file, 'rb'))
-        self.W_e = pickle.load(open(emo_embs_file, 'rb'))
-        self.W_t = pickle.load(open(tweet_emo_file, 'rb'))
+        self.W_t = pickle.load(open(tweet_tags_file, 'rb'))
 
         self.pad_token_idx = self.token2idx['__PAD__']
         self.idx2token = {v:k for k, v in self.token2idx.iteritems()}
@@ -159,7 +158,6 @@ class TweetCorpus:
             self.unld_val_data = Corpus(unld_val_file, 'lm')
 
     def get_data_for_classification(self):
-
         X_tr = None
         y_tr = None
         if self.tr_data is not None:

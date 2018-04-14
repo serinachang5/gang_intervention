@@ -43,7 +43,7 @@ def make_ppmi_embs(D, dim=300):
     for i, word in enumerate(vocab):
         ui = u[i]
         embs[word] = (ui[:dim]).tolist()
-    print 'Embedding dim:', len(embs['You'])
+    print 'Embedding dim:', len(embs['you'])
     return embs
 
 def get_ppmi(D):
@@ -56,24 +56,24 @@ def get_ppmi(D):
     vocab = [x[0] for x in vocab]
     print 'First 10 words in vocab:', vocab[:10]
 
-    # coo = (counts.T).dot(counts)
-    # coo.setdiag(1) # fill same word co-occurence to 1 so every word has at least one coo
-    #
-    # marginalized = coo.sum(axis=0) # num of coo per x
-    # prob_norm = coo.sum() # all coo
-    # print 'Prob_norm:', prob_norm
-    # row_mat = np.ones((v, v), dtype=np.float)
-    # for i in range(v):
-    #     prob = marginalized[0,i] / prob_norm
-    #     row_mat[i,:] = prob
-    # col_mat = row_mat.T
-    # joint = coo.toarray() / prob_norm
-    #
-    # P = joint / (row_mat * col_mat) # elementwise
-    # with np.errstate(divide='ignore'): # ignore 0
-    #     P = np.fmax(np.zeros((v, v), dtype=np.float), np.log(P))
-    # print 'Computed PPMI:', P.shape
-    # return P, vocab
+    coo = (counts.T).dot(counts)
+    coo.setdiag(1) # fill same word co-occurence to 1 so every word has at least one coo
+
+    marginalized = coo.sum(axis=0) # num of coo per x
+    prob_norm = coo.sum() # all coo
+    print 'Prob_norm:', prob_norm
+    row_mat = np.ones((v, v), dtype=np.float)
+    for i in range(v):
+        prob = marginalized[0,i] / prob_norm
+        row_mat[i,:] = prob
+    col_mat = row_mat.T
+    joint = coo.toarray() / prob_norm
+
+    P = joint / (row_mat * col_mat) # elementwise
+    with np.errstate(divide='ignore'): # ignore 0
+        P = np.fmax(np.zeros((v, v), dtype=np.float), np.log(P))
+    print 'Computed PPMI:', P.shape
+    return P, vocab
 
 def get_ppmi2(D):
     count_model = CountVectorizer(lowercase=False, min_df=5)

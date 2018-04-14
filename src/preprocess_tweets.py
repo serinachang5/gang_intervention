@@ -8,6 +8,7 @@ import os
 import cPickle as pickle
 from data_utils.utils import unicode_csv_reader2, parse_line, get_delimiter, datum_to_string, delete_files
 import numpy as np
+from sklearn.preprocessing import MinMaxScaler
 
 def read_stop_chars(stop_chars_file):
     if stop_chars_file is None:
@@ -227,7 +228,7 @@ class TweetPreprocessor:
         print('Found %s word vectors of word2vec' % len(word2vec.vocab))
         return word2vec
 
-    def get_dense_embeddings(self, w2v_file = None, emoji_file = None, emb_dim = 300):
+    def get_dense_embeddings(self, w2v_file = None, emoji_file = None, splex_file = None, emb_dim = 300):
 
         # TODO: add an option to also load pre-trained emoji embeddings
         w2v = None
@@ -240,32 +241,61 @@ class TweetPreprocessor:
             unicode_tokens, unicode_embs = pickle.load(open(emoji_file, "rb"))
             unicode_token2idx = {v:k for k, v in enumerate(unicode_tokens)}
 
-        W = np.zeros((len(self.token2idx), emb_dim))
+        splex = None
+        sp_dim = 0
+        scalers = []
+        if splex_file is not None:
+            splex = pickle.load(open(splex_file, 'rb'))
+            scores = np.array(splex.values())
+            sp_dim = scores.shape[1]
+            by_class = scores.T
+            for i in range(sp_dim):
+                scaler = MinMaxScaler()
+                scaler.fit(by_class[i].reshape(-1,1))
+                scalers.append(scaler)
+
+        W = np.zeros((len(self.token2idx), emb_dim+sp_dim))
+        print 'W-shape:', W.shape
 
         w2v_miss_count = 0
         emoji_miss_count = 0
+        splex_miss_count = 0
         for token in self.token2idx:
             if w2v is not None and token in w2v.vocab:
-                W[self.token2idx[token]] = w2v.word_vec(token)
+                emb = w2v.word_vec(token)
             elif unicode_tokens is not None and token in unicode_tokens:
-                W[self.token2idx[token]] = unicode_embs[unicode_token2idx[token]]
+                emb = unicode_embs[unicode_token2idx[token]]
                 w2v_miss_count += 1
             else:
                 w2v_miss_count += 1
                 emoji_miss_count += 1
-                W[self.token2idx[token]] = np.random.uniform(-0.25, 0.25, emb_dim)
+                emb = np.random.uniform(-0.25, 0.25, emb_dim)
+            if splex is not None:
+                if token.lower() in splex:
+                    scores = splex[token.lower()]
+                    scaled_scores = np.zeros(sp_dim, dtype=np.float)
+                    for i in range(sp_dim):
+                        scaled_scores[i] = scalers[i].transform(scores[i].reshape(1,-1))[0]
+                    emb = np.concatenate((emb, scaled_scores), axis = 0)
+                else:
+                    splex_miss_count += 1
+                    emb = np.concatenate((emb, np.zeros(sp_dim)), axis = 0)
+            else:
+                splex_miss_count += 1
+            W[self.token2idx[token]] = emb
 
         # just make sure the embedding corresponding to padding token is al zero
-        W[self.token2idx['__PAD__']] = np.zeros(emb_dim, dtype = 'float32')
+        W[self.token2idx['__PAD__']] = np.zeros(emb_dim+sp_dim, dtype = 'float32')
 
         print 'Number of tokens in vocabulary:', len(self.token2idx.keys())
         print 'Number of token embeddings found:', (len(self.token2idx.keys()) - w2v_miss_count)
         print 'Number of emoji embeddings found:', (w2v_miss_count - emoji_miss_count)
+        print 'Number of splex scores found:', (len(self.token2idx.keys()) - splex_miss_count)
         return W
 
-    def get_emo_embeddings(self, lfile = None, emb_dim = 3):
-        if lfile is not None:
-            w2e = pickle.load(open(lfile, 'rb'))
+    def get_emo_embeddings(self, splex_file = None):
+        if splex_file is not None:
+            w2e = pickle.load(open(splex_file, 'rb'))
             avg = np.mean(w2e.values(), axis=0)
             neu = [x/sum(avg) for x in avg]
         else:
@@ -289,40 +319,39 @@ class TweetPreprocessor:
         print 'Number of emo embeddings found:', (len(self.token2idx.keys()) - w2e_miss_count)
         return W
 
-    def get_tweet_emo(self, lfile = None, emb_dim = 3):
-        if lfile is not None:
-            w2e = pickle.load(open(lfile, 'rb'))
-            avg = np.mean(w2e.values(), axis=0)
-            neu = [x/sum(avg) for x in avg]
-        else:
-            w2e = {}
-            neu = np.zeros(3)
+    def get_tweet_tags(self, splex_file):
+        splex = pickle.load(open(splex_file, 'rb'))
+        scores = np.array(splex.values())
+        sp_dim = scores.shape[1]
+        by_class = scores.T
+        scalers = []
+        for i in range(sp_dim):
+            scaler = MinMaxScaler()
+            scaler.fit(by_class[i].reshape(-1,1))
+            scalers.append(scaler)
 
-        W = np.zeros((len(self.tweets), emb_dim))
+        W = np.zeros((len(self.tweets), sp_dim))
 
         tweet_rep = 0
         for twe_i, tuple in enumerate(self.tweets):
             if tuple is None:
-                W[twe_i] = neu
+                W[twe_i] = np.zeros((sp_dim,))
                 tweet_rep += 1
             else:
                 tweet, date = tuple
-                max_loss = 0
-                max_agg = 0
-                max_oth = 0
+                maxes = np.full(sp_dim, -1, dtype=np.float)
                 for tok in tweet:
-                    encoded = tok.encode('utf8')
-                    if encoded in w2e:
-                        scores = w2e[encoded]
-                        l,a,o = [x/sum(scores) for x in scores]
-                        max_loss = max(max_loss, l)
-                        max_agg = max(max_agg, a)
-                        max_oth = max(max_oth, o)
-                if max_loss == 0:
-                    tweet_emb = neu
+                    tok = tok.lower()
+                    if tok in splex:
+                        scores = splex[tok]
+                        for i in range(sp_dim):
+                            scaled_score = scalers[i].transform(scores[i].reshape(1,-1))[0]
+                            maxes[i] = max(maxes[i], scaled_score)
+                if maxes[0] < 0:
+                    tweet_emb = np.zeros((sp_dim,))
                 else:
                     tweet_rep += 1
-                    tweet_emb = [max_loss, max_agg, max_oth]
+                    tweet_emb = maxes
                 W[twe_i] = tweet_emb
         print W[:5]
         print 'Number of tweets represented: {} out of {}'.format(tweet_rep, len(self.tweets))
@@ -477,14 +506,15 @@ def main(args):
     if args['use_one_hot']:
         W = tweet_preprocessor.get_onehot_vectors()
     else:
-        W = tweet_preprocessor.get_dense_embeddings(args['w2v_file'], args['emoji_file'], args['emb_dim'])
+        W = tweet_preprocessor.get_dense_embeddings(args['w2v_file'], args['emoji_file'], args['splex_file'], args['emb_dim'])
     # tweet_preprocessor.split_unlabeled_data(args['output_file_dir'], args['tweets_file'], split_ratio = 0.2)
     pickle.dump([W, tweet_preprocessor.token2idx, tweet_preprocessor.label2idx, tweet_preprocessor.counts, tweet_preprocessor.class_weights, tweet_preprocessor.max_len], open(os.path.join(args['output_file_dir'], 'dictionaries_' + time_stamp + '.p'), 'wb'))
     # tweet_preprocessor.print_stats()
-    W = tweet_preprocessor.get_emo_embeddings(args['emolex_file'])
-    pickle.dump(W, open(os.path.join(args['output_file_dir'], 'emo_embs_' + time_stamp + '.p'), 'wb'))
-    W = tweet_preprocessor.get_tweet_emo(args['emolex_file'])
-    pickle.dump(W, open(os.path.join(args['output_file_dir'], 'tweet_emo_' + time_stamp + '.p'), 'wb'))
+    # W = tweet_preprocessor.get_emo_embeddings(args['emolex_file'])
+    # pickle.dump(W, open(os.path.join(args['output_file_dir'], 'emo_embs_' + time_stamp + '.p'), 'wb'))
+    if args['splex_file'] is not None:
+        W = tweet_preprocessor.get_tweet_tags(args['splex_file'])
+        pickle.dump(W, open(os.path.join(args['output_file_dir'], 'tweet_tags_' + time_stamp + '.p'), 'wb'))
 
 
 if __name__ == '__main__':
@@ -501,7 +531,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-wfile', '--w2v_file', type = str, default = None, help = 'file containing pre-trained word2vec embeddings')
     parser.add_argument('-efile', '--emoji_file', type = str, default = None, help = 'file containing pre-trained emoji embeddings')
-    parser.add_argument('-lfile', '--emolex_file', type = str, default = None, help = 'file containing pre-trained emotion embeddings')
+    parser.add_argument('-lfile', '--splex_file', type = str, default = None, help = 'file containing pre-trained emotion embeddings')
 
     parser.add_argument('-unld_tr', '--tweets_file_tr', type = str, default = None, help = 'unlabeled tweets file to be used for training language model')
     parser.add_argument('-unld_val', '--tweets_file_val', type = str, default = None, help = 'unlabeled tweets file to be used for validating language model')
