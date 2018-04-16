@@ -192,7 +192,7 @@ class TweetCorpus:
         # combine X_train, X_val and use the combined dataset for cross validation
         X_train = np.concatenate((X_tr, X_val), axis = 0)
         y_train = np.concatenate((y_tr, y_val), axis = 0)
-        skf = StratifiedKFold(n_splits = folds)
+        skf = StratifiedKFold(shuffle = True, n_splits = folds)
         for train_index, test_index in skf.split(X_train, np.argmax(y_train, axis = 1)):
             this_X_train = [X_train[train_index, :seq_len], X_train[train_index, seq_len:]]
             print len(this_X_train[0])

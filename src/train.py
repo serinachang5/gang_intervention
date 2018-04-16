@@ -163,7 +163,7 @@ def main(args):
         preds_all = []
         y_all = []
         fold = 1
-        for X_train, X_val, y_train, y_val in corpus.get_data_for_cross_validation(3):
+        for X_train, X_val, y_train, y_val in corpus.get_data_for_cross_validation(5):
             print 'Processing fold:', fold
             fold += 1
             if args['arch_type'] == 'lstm':
