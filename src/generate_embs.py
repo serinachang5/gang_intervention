@@ -1,6 +1,6 @@
 import argparse
 from data_utils.utils import unicode_csv_reader2, parse_line, get_delimiter, datum_to_string, delete_files
-from gensim.models import Word2Vec
+from gensim.models import Word2Vec, KeyedVectors
 import json
 import numpy as np
 import pickle
@@ -10,25 +10,45 @@ EMO_LEX = pickle.load(open('sentprop_lex_gnip.p', 'rb'))
 
 DEBUGGING = True
 
-def read_tweets(data_file, join=False):
+def read_tweets(data_file, join=False, char_level=True):
     tweets = []
     delimiter = get_delimiter(data_file)
     with open(data_file, 'r') as fhr:
         reader = unicode_csv_reader2(fhr, encoding = 'utf8', delimiter = delimiter)
         for row in reader:
             parsed = parse_line(row, 'text', 'label', 'tweet_id', 'user_name', 'created_at',
-                                      max_len=100, normalize=True, word_level=True)
+                                      max_len=100, normalize=True)
             tweet = parsed[0]
             if tweet is not None:
-                if join:
+                if join or char_level:
                     tweet = ' '.join(tweet)
-                tweets.append(tweet)
+
+                if char_level:
+                    chars = []
+                    index = 0
+                    while index < len(tweet):
+                        if tweet[index:index + len('__URL__')] == '__URL__':
+                            chars.append('__URL__')
+                            index = index + len('__URL__')
+                        elif tweet[index:index + len('__USER_HANDLE__')] == '__USER_HANDLE__':
+                            chars.append('__USER_HANDLE__')
+                            index = index + len('__USER_HANDLE__')
+                        elif tweet[index:index + len('__RT__')] == '__RT__':
+                            chars.append('__RT__')
+                            index = index + len('__RT__')
+                        else:
+                            ch = tweet[index]
+                            chars.append(ch)
+                            index += 1
+                    tweets.append(chars)
+                else:
+                    tweets.append(tweet)
     print tweets[:5]
     return tweets
 
 def train_w2v(D):
     print 'Training word2vec on {} texts...'.format(len(D))
-    model = Word2Vec(D, size=300, min_count=10, iter=20, workers=4)
+    model = Word2Vec(D, size=100, iter=20, workers=4)
     w2v = model.wv
     print 'Vocab size:', len(w2v.vocab)
     return w2v
@@ -75,35 +95,11 @@ def get_ppmi(D):
     print 'Computed PPMI:', P.shape
     return P, vocab
 
-def get_ppmi2(D):
-    count_model = CountVectorizer(lowercase=False, min_df=5)
-    counts = count_model.fit_transform(D)
-    unigram_counts = np.matrix(counts.sum(axis=0))
-    vocab = sorted(count_model.vocabulary_.items(), key=lambda x: x[1])
-    vocab = [x[0] for x in vocab]
-    v = len(vocab)
-    print 'v =', v
-
-    coo = counts.T * counts # co-occurrence matrix
-    coo.setdiag(0) # fill same word cooccurence to 0
-
-    mat = np.zeros((v, v))
-    prob_norm = coo.sum() + (len(D) * v)
-    for i in range(v):
-        if i%100 == 0: print i
-        count_i = unigram_counts[0,i]
-        prob_i = (count_i + 1.0) / prob_norm
-        for j in range(i+1, v):
-            count_j = unigram_counts[0,j]
-            prob_j = (count_j + 1.0) / prob_norm
-            count_coo = coo[i,j]
-            prob_coo = (count_coo + 1.0) / prob_norm
-            pmi = np.log(prob_coo / (prob_i * prob_j))
-            ppmi = max(pmi, 0)
-            mat[i][j] = ppmi
-            mat[j][i] = ppmi
-    print 'Done with PPMI matrix.'
-    return mat, vocab
+def check_emoji():
+    emoji_file = 'emoji_embeddings_300.p'
+    unicode_tokens, unicode_embs = pickle.load(open(emoji_file, "rb"))
+    for tok in unicode_tokens:
+        print tok.encode('utf8')
 
 def update_user_dict(data_file, current_dict):
     delimiter = get_delimiter(data_file)
@@ -278,8 +274,28 @@ if __name__ == '__main__':
     parser.add_argument('-sp', '--sentprop', type = str, default = None, help = 'path to sentprop lexicon')
 
     args = vars(parser.parse_args())
+    #
+    # main(args)
 
-    main(args)
+    c2v = KeyedVectors.load_word2vec_format('charembs300_nov27unlabeled_w2v', binary = True)
+    print 'Found %s word vectors of word2vec' % len(c2v.vocab)
+    print c2v.vocab
+
+    tweets = []
+    for fn in args['data_files']:
+        print 'Reading data from {}...'.format(fn)
+        tweets += read_tweets(fn, join=False)
+        tokens = set()
+
+    tokens = set()
+    for tweet in tweets:
+        for tok in tweet:
+            tokens.add(tok)
+    print 'Number of unique tokens:', len(tokens)
+
+    for tok in tokens:
+        if tok not in c2v.vocab:
+            print 'Missing:', tok
 
     # D = ['Hi it is me',
     #      'how is it going',
@@ -288,3 +304,4 @@ if __name__ == '__main__':
     # print D
     # embs = make_ppmi_embs(D)
     # check_rep('./saved/best_prediction_2018_04_09_11_44_39.p')
+    # check_emoji()

@@ -90,7 +90,7 @@ def load_corpus(args):
     if args == None:
         return None
 
-    corpus = TweetCorpus(args['train_file'], args['val_file'], args['test_file'], args['unld_train_file'], args['unld_val_file'], args['dictionaries_file'], args['tweet_tags_file'])
+    corpus = TweetCorpus(args['train_file'], args['val_file'], args['test_file'], args['unld_train_file'], args['unld_val_file'], args['dictionaries_file'], args['splex_scores_file'], args['tweet_tags_file'])
 
     args['max_seq_len'] = corpus.max_len
     args['nclasses'] = len(corpus.label2idx)
@@ -146,7 +146,7 @@ def main(args):
         else:
             # args['kernel_sizes'] = [1, 2, 3, 4, 5]
             print 'Creating CNN classifier model . . .'
-            clf = CNNClassifier(corpus.W, corpus.W_t, args)
+            clf = CNNClassifier(corpus.W, corpus.W_s, corpus.W_t, args)
             # if the weights from the pre-trained cnn exists then use those weights instead
             if args['trained_model'] is not None and os.path.isfile(args['trained_model']):
                 print 'Loading weights from trained CNN model . . .'
@@ -176,7 +176,7 @@ def main(args):
             else:
                 # args['kernel_sizes'] = [1, 2, 3, 4, 5]
                 print 'Creating CNN classifier model . . .'
-                clf = CNNClassifier(corpus.W, corpus.W_t, args)
+                clf = CNNClassifier(corpus.W, corpus.W_s, corpus.W_t, args)
                 # if the weights from the pre-trained cnn exists then use those weights instead
                 if args['trained_model'] is not None and os.path.isfile(args['trained_model']):
                     print 'Loading weights from trained CNN model . . .'
@@ -204,7 +204,8 @@ def parse_arguments():
     parser.add_argument('-val', '--val_file', type = str, default = None, help = 'labeled validation file')
     parser.add_argument('-tst', '--test_file', type = str, default = None, help = 'labeled test file')
     parser.add_argument('-dict', '--dictionaries_file', type = str, default = None, help = 'pickled dictionary file (run preprocess_tweets.py to generate)')
-    parser.add_argument('-twe', '--tweet_tags_file', type = str, default = None, help = 'pickled tweet emo embeddings file (run preprocess_tweets.py to generate)')
+    parser.add_argument('-sp', '--splex_scores_file', type = str, default = None, help = 'pickled splex scores file (run preprocess_tweets.py to generate)')
+    parser.add_argument('-twe', '--tweet_tags_file', type = str, default = None, help = 'pickled tweet tags embeddings file (run preprocess_tweets.py to generate)')
     parser.add_argument('-sdir', '--model_save_dir', type = str, default = None, help = 'directory where trained model should be saved')
 
     parser.add_argument('-md', '--mode', type = str, default = 'clf', help = 'mode (clf,clf_cv,lm)')

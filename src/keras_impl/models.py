@@ -220,17 +220,24 @@ class LSTMClassifier(object):
 
 class CNNClassifier(object):
 
-    def __init__(self, W, W_t, kwargs):
+    def __init__(self, W, W_s, W_t, kwargs):
         self.word_emb_layer = Embedding(kwargs['ntokens'], len(W[0]), input_length = kwargs['max_seq_len'], weights = [W], mask_zero = False, trainable = kwargs['trainable'], name = 'embedding_layer1')
-        self.window_emb_layer = Embedding(len(W_t), len(W_t[0]), input_length = 5, weights = [W_t], mask_zero = False, trainable = kwargs['trainable'], name = 'embedding_layer2')
+        self.word_splex_layer = Embedding(kwargs['ntokens'], len(W_s[0]), input_length = kwargs['max_seq_len'], weights = [W_s], mask_zero = False, trainable = kwargs['trainable'], name = 'embedding_layer2')
+        self.window_emb_layer = Embedding(len(W_t), len(W_t[0]), input_length = 5, weights = [W_t], mask_zero = False, trainable = kwargs['trainable'], name = 'embedding_layer3')
 
         # Run word embeddings through convolutional layers, max pooling
         self.conv_ls = []
         for ksz in kwargs['kernel_sizes']:
             self.conv_ls.append(Conv1D(kwargs['nfeature_maps'], ksz, name = 'conv' + str(ksz)))
-
         self.mxp_l = GlobalMaxPooling1D()
         self.dense1 = Dense(kwargs['dense_hidden_dim'], activation = 'relu', name = 'dense1')
+
+        self.mxp_l2 = MaxPooling1D(pool_size=kwargs['max_seq_len']/4)
+        # self.conv_ls2 = []
+        # for ksz in kwargs['kernel_sizes']:
+        #     self.conv_ls2.append(Conv1D(10, ksz, name = 'conv2' + str(ksz)))
+        # self.mxp_l2 = GlobalMaxPooling1D()
+        # self.dense2 = Dense(32, activation = 'relu', name = 'dense2')
 
         self.clf_op_layer = Dense(kwargs['nclasses'], activation = 'softmax', name = 'clf_op_layer')
 
@@ -240,6 +247,7 @@ class CNNClassifier(object):
         # Transform input in embeddings
         embedded_seq = self.word_emb_layer(sequence_input)
         embedded_seq = Dropout(kwargs['dropout'])(embedded_seq)
+        splex_seq = self.word_splex_layer(sequence_input)
         embedded_window = self.window_emb_layer(window_input)
         embedded_window = Flatten()(embedded_window)
 
@@ -250,11 +258,22 @@ class CNNClassifier(object):
             _tmp_op = Dropout(kwargs['dropout'])(_tmp_op)
             conv_mxp_ops.append(_tmp_op)
         conv_op = concatenate(conv_mxp_ops, axis = 1)
+        dense_op1 = self.dense1(conv_op)
 
-        dense_op = self.dense1(conv_op)
+        mxp_op = self.mxp_l2(splex_seq)
+        mxp_op = Flatten()(mxp_op)
+        # conv_mxp_ops2 = []
+        # for conv_l in self.conv_ls2:
+        #     _tmp_op = conv_l(splex_seq)
+        #     _tmp_op = self.mxp_l2(_tmp_op)
+        #     _tmp_op = Dropout(kwargs['dropout'])(_tmp_op)
+        #     conv_mxp_ops2.append(_tmp_op)
+        # conv_op2 = concatenate(conv_mxp_ops2, axis = 1)
+        # dense_op2 = self.dense2(conv_op2)
+
         # Concat dense output with discrete, go through final activation layer
-        final = dense_op
-        # final = concatenate([dense_op, embedded_window], axis = 1)
+        # final = dense_op
+        final = concatenate([dense_op1, mxp_op], axis = 1)
         clf_op = self.clf_op_layer(final)
 
         self.model = Model(inputs = [sequence_input, window_input], outputs = clf_op)

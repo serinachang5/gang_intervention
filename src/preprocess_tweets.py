@@ -22,18 +22,16 @@ def read_stop_chars(stop_chars_file):
 
 class TweetPreprocessor:
 
-    def __init__(self, stop_chars, time_stamp, max_len, word_level, normalize, add_ss_markers):
+    def __init__(self, stop_chars, time_stamp, seq_max_len, char_max_len, normalize, add_ss_markers):
 
         self.stop_chars = stop_chars
         self.time_stamp = time_stamp
-        self.max_len = max_len
-        self.word_level = word_level
-        self.wsp = ''
-        if word_level:
-            self.wsp = ' '
+        self.seq_max_len = seq_max_len
+        self.char_max_len = char_max_len
         self.normalize = normalize
         self.add_ss_markers = add_ss_markers
         self.token2idx = {}
+        self.char2idx = {}
         self.user2idx = {}
         # add start and stop markers
         if self.add_ss_markers:
@@ -55,7 +53,7 @@ class TweetPreprocessor:
             with open(df, 'r') as fhr:
                 reader = unicode_csv_reader2(fhr, encoding, delimiter = delimiter)
                 for row in reader:
-                    X_c, y_c, tweet_id, user_name, time_created = parser(row, text_column, label_column, tweet_id_column, user_name_column, time_column, self.max_len, stop_chars = self.stop_chars, normalize = self.normalize, word_level = self.word_level, add_ss_markers = self.add_ss_markers)
+                    X_c, y_c, tweet_id, user_name, time_created = parser(row, text_column, label_column, tweet_id_column, user_name_column, time_column, self.seq_max_len, stop_chars = self.stop_chars, normalize = self.normalize, add_ss_markers = self.add_ss_markers)
                     if X_c is not None:
                         if user_name in user2idx:
                             user2tweets[user_name].append((X_c, time_created))
@@ -115,17 +113,16 @@ class TweetPreprocessor:
         indices_file = os.path.join(output_files_dir, '_' + fname_wo_ext + '_' + self.time_stamp + '.txt')
         dropped_tweets_file = os.path.join(output_files_dir, 'extra_files', fname_wo_ext + '_' + self.time_stamp + '_dropped.txt')
         delimiter = get_delimiter(data_file)
+
         with open(data_file, 'r') as fhr, open(indices_file, 'w') as fhw1, codecs.open(dropped_tweets_file, 'w', encoding = encoding) as fhw2:
             reader = unicode_csv_reader2(fhr, encoding, delimiter = delimiter)
             for row in reader:
-                X_c, y_c, tweet_id, user_name, time_created = parser(row, text_column, label_column, tweet_id_column, user_name_column, time_column, self.max_len, stop_chars = self.stop_chars, normalize = self.normalize, word_level = self.word_level, add_ss_markers = self.add_ss_markers)
+                X_c, y_c, tweet_id, user_name, time_created = parser(row, text_column, label_column, tweet_id_column, user_name_column, time_column, self.seq_max_len, stop_chars = self.stop_chars, normalize = self.normalize, add_ss_markers = self.add_ss_markers)
                 if X_c is None:
-                    # print tweet_id
                     fhw2.write(tweet_id)
                     fhw2.write('\n')
                     continue
-                X_ids = self.update_token2idx(X_c)
-                # _tmp = ','.join(X_ids)
+                tok_ids = self.update_token2idx(X_c)
                 if y_c is not None:
                     y_id = self.update_label2idx(y_c)
                 else:
@@ -135,8 +132,10 @@ class TweetPreprocessor:
                 if is_train and y_id != '':
                     self.class2count[int(y_id)] += 1
 
+                char_ids = self.update_char2idx(' '.join(X_c), self.char_max_len)
                 window_ids = self.get_window(user_name, time_created)
-                fhw1.write(datum_to_string(X_ids, y_id, tweet_id, window_ids))
+
+                fhw1.write(datum_to_string(tok_ids, char_ids, window_ids, y_id, tweet_id))
                 fhw1.write('\n')
 
         return indices_file
@@ -150,44 +149,50 @@ class TweetPreprocessor:
 
         self.len_dict[len(tweet)] += 1
 
-#         if len(tweet) <= 2:
-#             print tweet.encode('utf8')
+        for token in tweet:
+            if token not in self.token2idx:
+                self.token2idx[token] = len(self.token2idx) + 1
+            idx.append(str(self.token2idx[token]))
 
-        if self.word_level:
-            for token in tweet:
-                if token not in self.token2idx:
-                    self.token2idx[token] = len(self.token2idx) + 1
-                idx.append(str(self.token2idx[token]))
-        else:
-            index = 0
-            while index < len(tweet):
-                if tweet[index:index + len('__URL__')] == '__URL__':
-                    if '__URL__' not in self.token2idx:
-                        self.token2idx['__URL__'] = len(self.token2idx) + 1
-                    idx.append(str(self.token2idx['__URL__']))
-                    index = index + len('__URL__')
-                elif tweet[index:index + len('__USER_HANDLE__')] == '__USER_HANDLE__':
-                    if '__USER_HANDLE__' not in self.token2idx:
-                        self.token2idx['__USER_HANDLE__'] = len(self.token2idx) + 1
-                    idx.append(str(self.token2idx['__USER_HANDLE__']))
-                    index = index + len('__USER_HANDLE__')
-                elif tweet[index:index + len('__RT__')] == '__RT__':
-                    if '__RT__' not in self.token2idx:
-                        self.token2idx['__RT__'] = len(self.token2idx) + 1
-                    idx.append(str(self.token2idx['__RT__']))
-                    index = index + len('__RT__')
-                else:
-                    ch = tweet[index]
-                    if ch not in self.token2idx:
-                        self.token2idx[ch] = len(self.token2idx) + 1
-                    idx.append(str(self.token2idx[ch]))
-                    index += 1
+        return idx
+
+    def update_char2idx(self, tweet, max_len):
+
+        if tweet is None:
+            return None
+
+        idx = []
+
+        index = 0
+        while index < len(tweet) and len(idx) <= max_len:
+            if tweet[index:index + len('__URL__')] == '__URL__':
+                if '__URL__' not in self.char2idx:
+                    self.char2idx['__URL__'] = len(self.char2idx) + 1
+                idx.append(str(self.char2idx['__URL__']))
+                index = index + len('__URL__')
+            elif tweet[index:index + len('__USER_HANDLE__')] == '__USER_HANDLE__':
+                if '__USER_HANDLE__' not in self.char2idx:
+                    self.char2idx['__USER_HANDLE__'] = len(self.char2idx) + 1
+                idx.append(str(self.char2idx['__USER_HANDLE__']))
+                index = index + len('__USER_HANDLE__')
+            elif tweet[index:index + len('__RT__')] == '__RT__':
+                if '__RT__' not in self.char2idx:
+                    self.char2idx['__RT__'] = len(self.char2idx) + 1
+                idx.append(str(self.char2idx['__RT__']))
+                index = index + len('__RT__')
+            else:
+                ch = tweet[index]
+                if ch not in self.char2idx:
+                    self.char2idx[ch] = len(self.char2idx) + 1
+                idx.append(str(self.char2idx[ch]))
+                index += 1
 
         return idx
 
     def update_user2idx(self, user_name):
         if user_name not in self.user2idx:
             self.user2idx[user_name] = len(self.user2idx)
+
         return str(self.user2idx[user_name])
 
     def update_label2idx(self, label):
@@ -229,14 +234,13 @@ class TweetPreprocessor:
         return word2vec
 
     def get_dense_embeddings(self, w2v_file = None, emoji_file = None, splex_file = None, append_splex = False, emb_dim = 300):
-
-        # TODO: add an option to also load pre-trained emoji embeddings
         w2v = None
         if w2v_file is not None:
             w2v = self.load_w2v(w2v_file)
 
         unicode_tokens = None
         unicode_embs = None
+        unicode_token2idx = None
         if emoji_file is not None:
             unicode_tokens, unicode_embs = pickle.load(open(emoji_file, "rb"))
             unicode_token2idx = {v:k for k, v in enumerate(unicode_tokens)}
@@ -254,7 +258,7 @@ class TweetPreprocessor:
                 scalers.append(scaler)
 
         W = np.zeros((len(self.token2idx), emb_dim+sp_dim))
-        print 'W-shape:', W.shape
+        print 'Token W-shape:', W.shape
 
         w2v_miss_count = 0
         emoji_miss_count = 0
@@ -289,7 +293,30 @@ class TweetPreprocessor:
         print 'Number of tokens in vocabulary:', len(self.token2idx.keys())
         print 'Number of token embeddings found:', (len(self.token2idx.keys()) - w2v_miss_count)
         print 'Number of emoji embeddings found:', (w2v_miss_count - emoji_miss_count)
-        print 'Number of splex scores found:', (len(self.token2idx.keys()) - splex_miss_count)
+        print 'Number of splex scores appended:', (len(self.token2idx.keys()) - splex_miss_count)
+
+        return W
+
+    def get_char_embeddings(self, char_file, emb_dim = 100):
+        c2v = self.load_w2v(char_file)
+
+        W = np.zeros((len(self.char2idx)+1, emb_dim)) # plus one for PAD
+
+        char_miss_count = 0
+        for char in self.char2idx:
+            if char in c2v.vocab:
+                emb = c2v.word_vec(char)
+                W[self.char2idx[char]] = emb
+            else:
+                print 'Missed char:', char
+                char_miss_count += 1
+                W[self.char2idx[char]] = np.random.uniform(-0.25, 0.25, emb_dim)
+
+        W[self.token2idx['__PAD__']] = np.zeros(emb_dim, dtype = 'float32')
+
+        print 'Number of characters in vocabulary:', len(self.char2idx.keys())
+        print 'Number of character embeddings found:', (len(self.char2idx.keys()) - char_miss_count)
+
         return W
 
     def get_splex_scores(self, splex_file):
@@ -319,8 +346,8 @@ class TweetPreprocessor:
                 W[self.token2idx[tok]] = np.zeros((sp_dim,))
 
         W[self.token2idx['__PAD__']] = np.zeros((sp_dim,))
-        print W[:5]
         print 'Number of splex scores found:', (len(self.token2idx.keys()) - splex_miss_count)
+
         return W
 
     def get_tweet_tags(self, splex_file):
@@ -357,8 +384,10 @@ class TweetPreprocessor:
                     tweet_rep += 1
                     tweet_emb = maxes
                 W[twe_i] = tweet_emb
-        print W[:5]
-        print 'Number of tweets represented: {} out of {}'.format(tweet_rep, len(self.tweets))
+
+        print 'Number of tweets stored:', len(self.tweets)
+        print 'Number of tweets represented:', tweet_rep
+
         return W
 
     def print_stats(self):
@@ -386,7 +415,7 @@ class TweetPreprocessor:
                     for idx in idx_lst:
                         _idx2c[int(idx)] += 1
                     # account for padding token
-                    _idx2c[0] += max(0, self.max_len - len(idx_lst))
+                    _idx2c[0] += max(0, self.seq_max_len - len(idx_lst))
 
         # replace rare words
         rare_wc = 0
@@ -439,7 +468,8 @@ class TweetPreprocessor:
                 for line in fhr1:
                     x_y_tid = line.strip().split('<:>')
                     idx_lst = x_y_tid[0].split(',')
-                    window_lst = x_y_tid[3].split(',')
+                    char_lst = x_y_tid[1].split(',')
+                    window_lst = x_y_tid[2].split(',')
                     new_idx_lst = []
                     for idx in idx_lst:
                         idx = int(idx)
@@ -451,16 +481,15 @@ class TweetPreprocessor:
                         tweets_dropped[fname] += 1
                         continue
                     else:
-                        fhw2.write(','.join([x_y_tid[2], self.wsp.join([_idx2token[int(idx)].encode('utf8') for idx in new_idx_lst])]))
+                        fhw2.write(','.join([x_y_tid[4], ' '.join([_idx2token[int(idx)].encode('utf8') for idx in new_idx_lst])]))
                         fhw2.write('\n')
-                        fhw1.write(datum_to_string(new_idx_lst, x_y_tid[1], x_y_tid[2], window_lst))
+                        fhw1.write(datum_to_string(new_idx_lst, char_lst, window_lst, x_y_tid[3], x_y_tid[4]))
                         fhw1.write('\n')
 
         # delete old files
         delete_files(labeled_files + unlabeled_files)
 
-        print 'Tweet drop statistics:'
-        print tweets_dropped
+        print 'Tweet drop statistics:', tweets_dropped
 
 def print_args(args):
 
@@ -472,14 +501,12 @@ def main(args):
     print_args(args)
     time_stamp = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     stop_chars = read_stop_chars(args['stop_chars_file'])
-    if args['word_level']:
-        max_len = 53
-    else:
-        max_len = 150
+    seq_max_len = 53
+    char_max_len = 150
 
     unlabeled_files = []
     labeled_files = []
-    tweet_preprocessor = TweetPreprocessor(stop_chars, time_stamp, max_len = max_len, word_level = args['word_level'], normalize = args['normalize'], add_ss_markers = args['add_ss_markers'])
+    tweet_preprocessor = TweetPreprocessor(stop_chars, time_stamp, seq_max_len = seq_max_len, char_max_len = char_max_len, normalize = args['normalize'], add_ss_markers = args['add_ss_markers'])
     if args['store_files'] is not None:
         print 'Storing data . . .'
         tweet_preprocessor.store_tweets(args['store_files'], parse_line, 'text', 'label', 'tweet_id', 'user_name', 'created_at', 'utf8')
@@ -502,23 +529,28 @@ def main(args):
         print 'Processing unlabeled validation set . . .'
         unlabeled_files.append(tweet_preprocessor.read_data(args['output_file_dir'], args['tweets_file_val'], parse_line, 'text', 'label', 'tweet_id', 'user_name', 'created_at', 'utf8'))
 
-    print 'Re-mapping token2idx . . .'
+    print 'Re-mapping token2idx. . .'
     tweet_preprocessor.remap(labeled_files, unlabeled_files)
-    #
-    # At this point the padding token is already in token2idx
     tweet_preprocessor.get_class_weights()
+
+    # word-level
     if args['use_one_hot']:
         W = tweet_preprocessor.get_onehot_vectors()
     else:
         W = tweet_preprocessor.get_dense_embeddings(args['w2v_file'], args['emoji_file'], args['splex_file'], args['append_splex'], args['emb_dim'])
-    # tweet_preprocessor.split_unlabeled_data(args['output_file_dir'], args['tweets_file'], split_ratio = 0.2)
-    pickle.dump([W, tweet_preprocessor.token2idx, tweet_preprocessor.label2idx, tweet_preprocessor.counts, tweet_preprocessor.class_weights, tweet_preprocessor.max_len], open(os.path.join(args['output_file_dir'], 'dictionaries_' + time_stamp + '.p'), 'wb'))
-    # tweet_preprocessor.print_stats()
+    # pickle.dump([W, tweet_preprocessor.token2idx, tweet_preprocessor.label2idx, tweet_preprocessor.counts, tweet_preprocessor.class_weights, tweet_preprocessor.max_len], open(os.path.join(args['output_file_dir'], 'dictionaries_' + time_stamp + '.p'), 'wb'))
+
+    # char-level
+    if args['char_file'] is not None:
+        W = tweet_preprocessor.get_char_embeddings(args['char_file'])
+        # pickle.dump(W, open(os.path.join(args['output_file_dir'], 'char_embeddings_' + time_stamp + '.p'), 'wb'))
+
+    # splex scores
     if args['splex_file'] is not None:
         W = tweet_preprocessor.get_splex_scores(args['splex_file'])
-        pickle.dump(W, open(os.path.join(args['output_file_dir'], 'splex_scores_' + time_stamp + '.p'), 'wb'))
+        # pickle.dump(W, open(os.path.join(args['output_file_dir'], 'splex_scores_' + time_stamp + '.p'), 'wb'))
         W = tweet_preprocessor.get_tweet_tags(args['splex_file'])
-        pickle.dump(W, open(os.path.join(args['output_file_dir'], 'tweet_tags_' + time_stamp + '.p'), 'wb'))
+        # pickle.dump(W, open(os.path.join(args['output_file_dir'], 'tweet_tags_' + time_stamp + '.p'), 'wb'))
 
 
 if __name__ == '__main__':
@@ -535,13 +567,13 @@ if __name__ == '__main__':
 
     parser.add_argument('-wfile', '--w2v_file', type = str, default = None, help = 'file containing pre-trained word2vec embeddings')
     parser.add_argument('-efile', '--emoji_file', type = str, default = None, help = 'file containing pre-trained emoji embeddings')
-    parser.add_argument('-lfile', '--splex_file', type = str, default = None, help = 'file containing pre-trained emotion embeddings')
+    parser.add_argument('-cfile', '--char_file', type = str, default = None, help = 'file containing pre-trained character embeddings')
+    parser.add_argument('-lfile', '--splex_file', type = str, default = None, help = 'file containing pre-trained splex scores')
     parser.add_argument('-app', '--append_splex', type = bool, default = False, help = 'whether to append splex scores to word embeddings; ignored if splex is not provided')
 
     parser.add_argument('-unld_tr', '--tweets_file_tr', type = str, default = None, help = 'unlabeled tweets file to be used for training language model')
     parser.add_argument('-unld_val', '--tweets_file_val', type = str, default = None, help = 'unlabeled tweets file to be used for validating language model')
-    parser.add_argument('-nor', '--normalize', type = bool, default = True, help = 'If True, the tweets will be normalized. Check "preprocess" method')
-    parser.add_argument('-wl', '--word_level', type = bool, default = False, help = 'If True, tweets will be processed at word level otherwise at char level')
+    parser.add_argument('-nor', '--normalize', type = bool, default = True, help = 'Normalize i.e. preprocess tweets')
     parser.add_argument('-amrks', '--add_ss_markers', type = bool, default = False, help = 'If True, start and stop markers will be added to the tweets')
     parser.add_argument('-edim', '--emb_dim', type = int, default = 300, help = 'embedding dimension')
     args = vars(parser.parse_args())

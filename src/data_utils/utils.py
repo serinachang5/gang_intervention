@@ -67,7 +67,7 @@ def get_delimiter(data_file):
         delimiter = ' '
     return delimiter
 
-def parse_line(line, text_column, label_column, tweet_id_column, user_name_column, time_column, max_len, stop_chars = None, normalize = False, add_ss_markers = False, word_level = False):
+def parse_line(line, text_column, label_column, tweet_id_column, user_name_column, time_column, max_len, stop_chars = None, normalize = False, add_ss_markers = False):
 
     if add_ss_markers:
         # -4 to account for start and stop markers and spaces
@@ -98,11 +98,11 @@ def parse_line(line, text_column, label_column, tweet_id_column, user_name_colum
         line[text_column] = [ch for ch in line[text_column] if ch not in stop_chars]
         line[text_column] = ''.join(line[text_column])
     if normalize:
-        line[text_column] = preprocess(line[text_column], is_word_level = word_level)
+        line[text_column] = preprocess(line[text_column], is_word_level = True)
     if line[text_column] in (None, ''):
         return None, None, line[tweet_id_column], line[user_name_column], line[time_column]
-    if word_level:
-        line[text_column] = line[text_column].split(' ')
+
+    line[text_column] = line[text_column].split(' ')
     if len(line[text_column]) > _max_len:
         line[text_column] = line[text_column][:_max_len]
     if add_ss_markers:
@@ -116,16 +116,19 @@ def parse_line(line, text_column, label_column, tweet_id_column, user_name_colum
 
     return X_c, y_c, line[tweet_id_column], line[user_name_column], line[time_column]
 
-def datum_to_string(X_ids, y_id, tweet_id, window_ids):
+def datum_to_string(tok_ids, char_ids, window_ids, y_id, tweet_id):
 
     file_str = StringIO()
-    file_str.write(','.join(X_ids).strip())
+    file_str.write(','.join(tok_ids).strip())
+    file_str.write('<:>')
+    file_str.write(','.join(char_ids).strip())
+    file_str.write('<:>')
+    file_str.write(','.join(window_ids).strip())
     file_str.write('<:>')
     file_str.write(y_id)
     file_str.write('<:>')
     file_str.write(tweet_id)
-    file_str.write('<:>')
-    file_str.write(','.join(window_ids).strip())
+
     return file_str.getvalue()
 
 def delete_files(flist):

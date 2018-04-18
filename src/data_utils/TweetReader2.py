@@ -124,9 +124,10 @@ class Generator:
 
 class TweetCorpus:
 
-    def __init__(self, train_file = None, val_file = None, test_file = None, unld_train_file = None, unld_val_file = None, dictionaries_file = None, tweet_tags_file = None):
+    def __init__(self, train_file = None, val_file = None, test_file = None, unld_train_file = None, unld_val_file = None, dictionaries_file = None, splex_scores_file = None, tweet_tags_file = None):
 
         self.W, self.token2idx, self.label2idx, self.counts, self.class_weights, self.max_len = pickle.load(open(dictionaries_file, 'rb'))
+        self.W_s = pickle.load(open(splex_scores_file, 'rb'))
         self.W_t = pickle.load(open(tweet_tags_file, 'rb'))
 
         self.pad_token_idx = self.token2idx['__PAD__']
