@@ -42,14 +42,14 @@ def add_pad_token(X, pad_token_idx, max_len):
 def parse_line(line, mode):
     x_y = line.split('<:>')
     seq = [int(ch) for ch in x_y[0].split(',')]
-    if mode == 'lm':
-        y = None
-    elif mode == 'clf':
-        y = [int(x_y[1])]
+    chars = [int(ch) for ch in x_y[1].split(',')]
+    window = [int(ch) for ch in x_y[2].split(',')]
+    y = None
+    if mode == 'clf':
+        y = [int(x_y[3])]
     elif mode == 'seq2seq':
         y = seq
-    window = [int(ch) for ch in x_y[3].split(',')]
-    return seq, window, y
+    return seq, chars, window, y
 
 def get_line_count(fname):
     p = subprocess.Popen(['wc', '-l', fname], stdout = subprocess.PIPE,
@@ -63,6 +63,7 @@ class Corpus:
     # in-memory data
     def __init__(self, data_file, mode):
         self.X_seq = []
+        self.X_char = []
         self.X_window = []
         self.y = []
         self.read_data(data_file, mode)
@@ -72,12 +73,14 @@ class Corpus:
 
         with open(data_file, 'r') as fh:
             for line in fh:
-                seq, window, y = parse_line(line, mode)
+                seq, chars, window, y = parse_line(line, mode)
                 self.X_seq.append(seq)
+                self.X_char.append(chars)
                 self.X_window.append(window)
                 self.y.append(y)
 
         self.X_seq = np.asarray(self.X_seq)
+        self.X_char = np.asarray(self.X_char)
         self.X_window = np.asarray(self.X_window)
         self.y = np.asarray(self.y)
 
@@ -124,14 +127,16 @@ class Generator:
 
 class TweetCorpus:
 
-    def __init__(self, train_file = None, val_file = None, test_file = None, unld_train_file = None, unld_val_file = None, dictionaries_file = None, splex_scores_file = None, tweet_tags_file = None):
+    def __init__(self, train_file = None, val_file = None, test_file = None, unld_train_file = None, unld_val_file = None, dictionaries_file = None, char_file = None, splex_scores_file = None, tweet_tags_file = None):
 
-        self.W, self.token2idx, self.label2idx, self.counts, self.class_weights, self.max_len = pickle.load(open(dictionaries_file, 'rb'))
+        self.W, self.token2idx, self.label2idx, self.counts, self.class_weights, self.seq_max_len = pickle.load(open(dictionaries_file, 'rb'))
+        self.W_c, self.char2idx, self.char_max_len = pickle.load(open(char_file, 'rb'))
         self.W_s = pickle.load(open(splex_scores_file, 'rb'))
         self.W_t = pickle.load(open(tweet_tags_file, 'rb'))
 
         self.pad_token_idx = self.token2idx['__PAD__']
         self.idx2token = {v:k for k, v in self.token2idx.iteritems()}
+        self.pad_char_idx = self.char2idx['__PAD__']
 
         if train_file is None:
             self.tr_data = None
@@ -162,42 +167,51 @@ class TweetCorpus:
         X_tr = None
         y_tr = None
         if self.tr_data is not None:
-            X_tr_seq = add_pad_token(self.tr_data.X_seq, self.pad_token_idx, self.max_len)
+            X_tr_seq = add_pad_token(self.tr_data.X_seq, self.pad_token_idx, self.seq_max_len)
+            X_tr_char = add_pad_token(self.tr_data.X_char, self.pad_char_idx, self.char_max_len)
+            for x in X_tr_char:
+                if len(x) != self.char_max_len:
+                    print x, len(x)
             X_tr_window = self.tr_data.X_window
-            X_tr = [X_tr_seq, X_tr_window]
+            X_tr = [X_tr_seq, X_tr_char, X_tr_window]
             y_tr = np_utils.to_categorical(self.tr_data.y, len(self.label2idx))
 
         X_val = None
         y_val = None
         if self.val_data is not None:
-            X_val_seq = add_pad_token(self.val_data.X_seq, self.pad_token_idx, self.max_len)
+            X_val_seq = add_pad_token(self.val_data.X_seq, self.pad_token_idx, self.seq_max_len)
+            X_val_char = add_pad_token(self.val_data.X_char, self.pad_char_idx, self.char_max_len)
             X_val_window = self.val_data.X_window
-            X_val = [X_val_seq, X_val_window]
+            X_val = [X_val_seq, X_val_char, X_val_window]
             y_val = np_utils.to_categorical(self.val_data.y, len(self.label2idx))
 
         X_te = None
         y_te = None
         if self.te_data is not None:
-            X_te_seq = add_pad_token(self.te_data.X_seq, self.pad_token_idx, self.max_len)
+            X_te_seq = add_pad_token(self.te_data.X_seq, self.pad_token_idx, self.seq_max_len)
+            X_te_char = add_pad_token(self.te_data.X_char, self.pad_char_idx, self.char_max_len)
             X_te_window = self.te_data.X_window
-            X_te = [X_te_seq, X_te_window]
+            X_te = [X_te_seq, X_te_char, X_te_window]
             y_te = np_utils.to_categorical(self.te_data.y, len(self.label2idx))
 
         return X_tr, X_val, X_te, y_tr, y_val, y_te
 
     def get_data_for_cross_validation(self, folds = 3):
         X_tr, X_val, _, y_tr, y_val, _ = self.get_data_for_classification()
-        seq_len = X_tr[0].shape[1]
-        X_tr = np.concatenate((X_tr[0], X_tr[1]), axis = 1)
-        X_val = np.concatenate((X_val[0], X_val[1]), axis = 1)
+        X_tr = np.concatenate((X_tr[0], X_tr[1], X_tr[2]), axis = 1)
+        X_val = np.concatenate((X_val[0], X_val[1], X_val[2]), axis = 1)
         # combine X_train, X_val and use the combined dataset for cross validation
         X_train = np.concatenate((X_tr, X_val), axis = 0)
         y_train = np.concatenate((y_tr, y_val), axis = 0)
         skf = StratifiedKFold(shuffle = True, n_splits = folds)
         for train_index, test_index in skf.split(X_train, np.argmax(y_train, axis = 1)):
-            this_X_train = [X_train[train_index, :seq_len], X_train[train_index, seq_len:]]
+            this_X_train = [X_train[train_index, : self.seq_max_len],
+                            X_train[train_index, self.seq_max_len : self.seq_max_len+self.char_max_len,
+                            X_train[train_index, self.seq_max_len+self.char_max_len :]]]
             print len(this_X_train[0])
-            this_X_test = [X_train[test_index, :seq_len], X_train[test_index, seq_len:]]
+            this_X_test = [X_train[test_index, : self.seq_max_len],
+                           X_train[test_index, self.seq_max_len : self.seq_max_len+self.char_max_len,
+                           X_train[test_index, self.seq_max_len+self.char_max_len : ]]]
             yield this_X_train, this_X_test, y_train[train_index], y_train[test_index]
 
     def get_data_for_lm(self, truncate = False, context_size = 10):

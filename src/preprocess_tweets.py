@@ -31,7 +31,7 @@ class TweetPreprocessor:
         self.normalize = normalize
         self.add_ss_markers = add_ss_markers
         self.token2idx = {}
-        self.char2idx = {}
+        self.char2idx = {'__PAD__':0}
         self.user2idx = {}
         # add start and stop markers
         if self.add_ss_markers:
@@ -164,26 +164,26 @@ class TweetPreprocessor:
         idx = []
 
         index = 0
-        while index < len(tweet) and len(idx) <= max_len:
+        while index < len(tweet) and len(idx) < max_len:
             if tweet[index:index + len('__URL__')] == '__URL__':
                 if '__URL__' not in self.char2idx:
-                    self.char2idx['__URL__'] = len(self.char2idx) + 1
+                    self.char2idx['__URL__'] = len(self.char2idx)
                 idx.append(str(self.char2idx['__URL__']))
                 index = index + len('__URL__')
             elif tweet[index:index + len('__USER_HANDLE__')] == '__USER_HANDLE__':
                 if '__USER_HANDLE__' not in self.char2idx:
-                    self.char2idx['__USER_HANDLE__'] = len(self.char2idx) + 1
+                    self.char2idx['__USER_HANDLE__'] = len(self.char2idx)
                 idx.append(str(self.char2idx['__USER_HANDLE__']))
                 index = index + len('__USER_HANDLE__')
             elif tweet[index:index + len('__RT__')] == '__RT__':
                 if '__RT__' not in self.char2idx:
-                    self.char2idx['__RT__'] = len(self.char2idx) + 1
+                    self.char2idx['__RT__'] = len(self.char2idx)
                 idx.append(str(self.char2idx['__RT__']))
                 index = index + len('__RT__')
             else:
                 ch = tweet[index]
                 if ch not in self.char2idx:
-                    self.char2idx[ch] = len(self.char2idx) + 1
+                    self.char2idx[ch] = len(self.char2idx)
                 idx.append(str(self.char2idx[ch]))
                 index += 1
 
@@ -300,7 +300,7 @@ class TweetPreprocessor:
     def get_char_embeddings(self, char_file, emb_dim = 100):
         c2v = self.load_w2v(char_file)
 
-        W = np.zeros((len(self.char2idx)+1, emb_dim)) # plus one for PAD
+        W = np.zeros((len(self.char2idx), emb_dim)) # plus one for PAD
 
         char_miss_count = 0
         for char in self.char2idx:
@@ -538,19 +538,19 @@ def main(args):
         W = tweet_preprocessor.get_onehot_vectors()
     else:
         W = tweet_preprocessor.get_dense_embeddings(args['w2v_file'], args['emoji_file'], args['splex_file'], args['append_splex'], args['emb_dim'])
-    # pickle.dump([W, tweet_preprocessor.token2idx, tweet_preprocessor.label2idx, tweet_preprocessor.counts, tweet_preprocessor.class_weights, tweet_preprocessor.max_len], open(os.path.join(args['output_file_dir'], 'dictionaries_' + time_stamp + '.p'), 'wb'))
+    pickle.dump([W, tweet_preprocessor.token2idx, tweet_preprocessor.label2idx, tweet_preprocessor.counts, tweet_preprocessor.class_weights, tweet_preprocessor.seq_max_len], open(os.path.join(args['output_file_dir'], 'dictionaries_' + time_stamp + '.p'), 'wb'))
 
     # char-level
     if args['char_file'] is not None:
-        W = tweet_preprocessor.get_char_embeddings(args['char_file'])
-        # pickle.dump(W, open(os.path.join(args['output_file_dir'], 'char_embeddings_' + time_stamp + '.p'), 'wb'))
+        W_c = tweet_preprocessor.get_char_embeddings(args['char_file'])
+        pickle.dump([W_c, tweet_preprocessor.char2idx, tweet_preprocessor.char_max_len], open(os.path.join(args['output_file_dir'], 'char_embeddings_' + time_stamp + '.p'), 'wb'))
 
     # splex scores
     if args['splex_file'] is not None:
-        W = tweet_preprocessor.get_splex_scores(args['splex_file'])
-        # pickle.dump(W, open(os.path.join(args['output_file_dir'], 'splex_scores_' + time_stamp + '.p'), 'wb'))
-        W = tweet_preprocessor.get_tweet_tags(args['splex_file'])
-        # pickle.dump(W, open(os.path.join(args['output_file_dir'], 'tweet_tags_' + time_stamp + '.p'), 'wb'))
+        W_s = tweet_preprocessor.get_splex_scores(args['splex_file'])
+        pickle.dump(W_s, open(os.path.join(args['output_file_dir'], 'splex_scores_' + time_stamp + '.p'), 'wb'))
+        W_t = tweet_preprocessor.get_tweet_tags(args['splex_file'])
+        pickle.dump(W_t, open(os.path.join(args['output_file_dir'], 'tweet_tags_' + time_stamp + '.p'), 'wb'))
 
 
 if __name__ == '__main__':

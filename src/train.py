@@ -90,11 +90,13 @@ def load_corpus(args):
     if args == None:
         return None
 
-    corpus = TweetCorpus(args['train_file'], args['val_file'], args['test_file'], args['unld_train_file'], args['unld_val_file'], args['dictionaries_file'], args['splex_scores_file'], args['tweet_tags_file'])
+    corpus = TweetCorpus(args['train_file'], args['val_file'], args['test_file'], args['unld_train_file'], args['unld_val_file'], args['dictionaries_file'], args['char_file'], args['splex_scores_file'], args['tweet_tags_file'])
 
-    args['max_seq_len'] = corpus.max_len
+    args['seq_max_len'] = corpus.seq_max_len
+    args['char_max_len'] = corpus.char_max_len
     args['nclasses'] = len(corpus.label2idx)
     args['ntokens'] = len(corpus.token2idx)
+    args['nchars'] = len(corpus.char2idx)
 
     if args['arch_type'] == 'cnn':
         args['kernel_sizes'] = [1, 2, 3, 4, 5]
@@ -146,7 +148,7 @@ def main(args):
         else:
             # args['kernel_sizes'] = [1, 2, 3, 4, 5]
             print 'Creating CNN classifier model . . .'
-            clf = CNNClassifier(corpus.W, corpus.W_s, corpus.W_t, args)
+            clf = CNNClassifier(corpus.W, corpus.W_c, corpus.W_s, corpus.W_t, args)
             # if the weights from the pre-trained cnn exists then use those weights instead
             if args['trained_model'] is not None and os.path.isfile(args['trained_model']):
                 print 'Loading weights from trained CNN model . . .'
@@ -154,6 +156,7 @@ def main(args):
 
         print 'Training classifier model . . .'
         X_train, X_val, X_test, y_train, y_val, y_test = corpus.get_data_for_classification()
+        print 'X_seq:', X_train[0].shape, 'X_char:', X_train[1].shape, 'X_wind:', X_train[2].shape
         # preds are output class probabilities
         preds, reps = clf.fit(X_train, X_val, X_test, y_train, y_val, corpus.class_weights, args)
         print classification_report(np.argmax(y_test, axis = 1), np.argmax(preds, axis = 1), target_names = corpus.get_class_names())
@@ -176,7 +179,7 @@ def main(args):
             else:
                 # args['kernel_sizes'] = [1, 2, 3, 4, 5]
                 print 'Creating CNN classifier model . . .'
-                clf = CNNClassifier(corpus.W, corpus.W_s, corpus.W_t, args)
+                clf = CNNClassifier(corpus.W, corpus.W_c, corpus.W_s, corpus.W_t, args)
                 # if the weights from the pre-trained cnn exists then use those weights instead
                 if args['trained_model'] is not None and os.path.isfile(args['trained_model']):
                     print 'Loading weights from trained CNN model . . .'
@@ -204,6 +207,7 @@ def parse_arguments():
     parser.add_argument('-val', '--val_file', type = str, default = None, help = 'labeled validation file')
     parser.add_argument('-tst', '--test_file', type = str, default = None, help = 'labeled test file')
     parser.add_argument('-dict', '--dictionaries_file', type = str, default = None, help = 'pickled dictionary file (run preprocess_tweets.py to generate)')
+    parser.add_argument('-ch', '--char_file', type = str, default = None, help = 'pickled char embeddings file (run preprocess_tweets.py to generate)')
     parser.add_argument('-sp', '--splex_scores_file', type = str, default = None, help = 'pickled splex scores file (run preprocess_tweets.py to generate)')
     parser.add_argument('-twe', '--tweet_tags_file', type = str, default = None, help = 'pickled tweet tags embeddings file (run preprocess_tweets.py to generate)')
     parser.add_argument('-sdir', '--model_save_dir', type = str, default = None, help = 'directory where trained model should be saved')
